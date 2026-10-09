@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.Matrix
+import android.graphics.RectF
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
@@ -30,7 +32,8 @@ interface PageSource : AutoCloseable {
      */
     fun aspect(index: Int): Float
 
-    suspend fun render(index: Int, width: Int): Bitmap
+    /** Draws a page [width] pixels wide; [crop] cuts white margins where the format allows. */
+    suspend fun render(index: Int, width: Int, crop: Boolean = false): Bitmap
 
     companion object {
         val formats = setOf(BookFormat.PDF, BookFormat.CBZ)
@@ -100,24 +103,83 @@ private class PdfSource(private val descriptor: ParcelFileDescriptor) : PageSour
 
     override fun aspect(index: Int): Float = aspects[index].takeIf { it > 0f } ?: aspects.firstOrNull() ?: 1.4f
 
-    override suspend fun render(index: Int, width: Int): Bitmap = lock.withLock {
+    /** Content bounds of each page as fractions of its size, found once from a small rendering. */
+    private val bounds = arrayOfNulls<RectF>(pageCount)
+
+    override suspend fun render(index: Int, width: Int, crop: Boolean): Bitmap = lock.withLock {
         withContext(Dispatchers.IO) {
             synchronized(renderer) {
                 renderer.openPage(index).use { page ->
-                    aspects[index] = page.height.toFloat() / page.width
+                    val area = if (crop) bounds[index] ?: contentBounds(page).also { bounds[index] = it } else FULL
+                    val cropWidth = area.width() * page.width
+                    val cropHeight = area.height() * page.height
+                    aspects[index] = cropHeight / cropWidth
                     val height = (width * aspects[index]).toInt().coerceAtLeast(1)
                     val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
                     bitmap.eraseColor(Color.WHITE)
-                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                    val scale = width / cropWidth
+                    val transform = Matrix().apply {
+                        setScale(scale, scale)
+                        postTranslate(-area.left * page.width * scale, -area.top * page.height * scale)
+                    }
+                    page.render(bitmap, null, transform, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                     bitmap
                 }
             }
         }
     }
 
+    /**
+     * Where the ink is: the page is drawn small and scanned for non-white pixels. A thin border
+     * is kept around the text, and pages that are almost empty are left whole.
+     */
+    private fun contentBounds(page: PdfRenderer.Page): RectF {
+        val w = PROBE_WIDTH
+        val h = (w * page.height.toFloat() / page.width).toInt().coerceAtLeast(1)
+        val probe = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        probe.eraseColor(Color.WHITE)
+        page.render(probe, null, Matrix().apply { setScale(w / page.width.toFloat(), h / page.height.toFloat()) }, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+        val pixels = IntArray(w * h)
+        probe.getPixels(pixels, 0, w, 0, 0, w, h)
+        probe.recycle()
+        var left = w
+        var right = -1
+        var top = h
+        var bottom = -1
+        for (y in 0 until h) {
+            val row = y * w
+            for (x in 0 until w) {
+                val c = pixels[row + x]
+                val luma = (Color.red(c) * 3 + Color.green(c) * 6 + Color.blue(c)) / 10
+                if (luma < INK) {
+                    if (x < left) left = x
+                    if (x > right) right = x
+                    if (y < top) top = y
+                    if (y > bottom) bottom = y
+                }
+            }
+        }
+        if (right < 0 || (right - left) < w / 5 || (bottom - top) < h / 10) return FULL
+        val padX = w * PAD
+        val padY = h * PAD
+        return RectF(
+            ((left - padX) / w).coerceAtLeast(0f),
+            ((top - padY) / h).coerceAtLeast(0f),
+            ((right + 1 + padX) / w).coerceAtMost(1f),
+            ((bottom + 1 + padY) / h).coerceAtMost(1f),
+        )
+    }
+
     override fun close() {
         synchronized(renderer) { renderer.close() }
         descriptor.close()
+    }
+
+    private companion object {
+        val FULL = RectF(0f, 0f, 1f, 1f)
+        const val PROBE_WIDTH = 240
+        const val INK = 225
+        const val PAD = 0.02f
     }
 }
 
@@ -144,7 +206,7 @@ private class CbzSource(file: File) : PageSource {
         zip.getInputStream(pages[index]).use { BitmapFactory.decodeStream(it, null, this) }
     }
 
-    override suspend fun render(index: Int, width: Int): Bitmap = withContext(Dispatchers.IO) {
+    override suspend fun render(index: Int, width: Int, crop: Boolean): Bitmap = withContext(Dispatchers.IO) {
         val bounds = bounds(index)
         var sample = 1
         while (bounds.outWidth / (sample * 2) >= width) sample *= 2

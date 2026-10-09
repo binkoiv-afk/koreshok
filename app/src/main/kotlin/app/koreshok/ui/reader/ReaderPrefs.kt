@@ -34,6 +34,10 @@ data class ReaderPrefs(
     val indent: Boolean = true,
     /** One continuous column instead of pages. */
     val scroll: Boolean = false,
+    /** PDF: cut white margins so the text is bigger without zooming. */
+    val cropMargins: Boolean = true,
+    /** PDF and comics: one page per screen with swipes, instead of a vertical strip. */
+    val pagedPages: Boolean = false,
 )
 
 private val Context.readerStore by preferencesDataStore("reader")
@@ -48,6 +52,8 @@ class ReaderSettings(private val context: Context) {
     private val hyphenate = booleanPreferencesKey("hyphenate")
     private val indent = booleanPreferencesKey("indent")
     private val scroll = booleanPreferencesKey("scroll")
+    private val cropMargins = booleanPreferencesKey("cropMargins")
+    private val pagedPages = booleanPreferencesKey("pagedPages")
 
     val prefs: Flow<ReaderPrefs> = context.readerStore.data.map { p ->
         val defaults = ReaderPrefs()
@@ -61,6 +67,8 @@ class ReaderSettings(private val context: Context) {
             hyphenate = p[hyphenate] ?: defaults.hyphenate,
             indent = p[indent] ?: defaults.indent,
             scroll = p[scroll] ?: defaults.scroll,
+            cropMargins = p[cropMargins] ?: defaults.cropMargins,
+            pagedPages = p[pagedPages] ?: defaults.pagedPages,
         )
     }
 
@@ -75,6 +83,8 @@ class ReaderSettings(private val context: Context) {
             p[hyphenate] = value.hyphenate
             p[indent] = value.indent
             p[scroll] = value.scroll
+            p[cropMargins] = value.cropMargins
+            p[pagedPages] = value.pagedPages
         }
     }
 }

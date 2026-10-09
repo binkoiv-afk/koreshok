@@ -6,6 +6,16 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Switch
+import androidx.compose.runtime.rememberUpdatedState
+import app.koreshok.ui.reader.ReaderPrefs
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -101,7 +111,10 @@ fun PageReaderScreen(uri: String, onBack: () -> Unit) {
                 Spacer(Modifier.height(16.dp))
                 OutlinedButton(onClick = onBack) { Text("Назад") }
             }
-            is PageBookState.Ready -> PageBook(current, theme, viewModel, onBack)
+            is PageBookState.Ready -> {
+                val currentPrefs = prefs ?: ReaderPrefs()
+                PageBook(current, currentPrefs, viewModel, onBack)
+            }
             PageBookState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center), color = theme.accent)
         }
     }
@@ -109,17 +122,23 @@ fun PageReaderScreen(uri: String, onBack: () -> Unit) {
 
 @OptIn(FlowPreview::class, ExperimentalMaterial3Api::class)
 @Composable
-private fun PageBook(book: PageBookState.Ready, theme: ReaderTheme, viewModel: PageReaderViewModel, onBack: () -> Unit) {
+private fun PageBook(book: PageBookState.Ready, prefs: ReaderPrefs, viewModel: PageReaderViewModel, onBack: () -> Unit) {
+    val theme = prefs.theme
     val source = book.source
+    val crop = prefs.cropMargins && source.isPaper
+    val paged = prefs.pagedPages
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = book.startPage)
+    val pagerState = rememberPagerState(initialPage = book.startPage) { source.pageCount }
     val scope = rememberCoroutineScope()
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
     var controls by remember { mutableStateOf(false) }
     var showBookmarks by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     var scale by remember { mutableFloatStateOf(1f) }
     var offsetX by remember { mutableFloatStateOf(0f) }
-    // The page that fills most of the screen.
-    val page by remember {
+    var offsetY by remember { mutableFloatStateOf(0f) }
+    // In the strip, the page that fills most of the screen; in paged mode, the page on screen.
+    val stripPage by remember {
         derivedStateOf {
             val info = listState.layoutInfo
             val visible = info.visibleItemsInfo
@@ -134,63 +153,104 @@ private fun PageBook(book: PageBookState.Ready, theme: ReaderTheme, viewModel: P
             }
         }
     }
+    val page = if (paged) pagerState.currentPage else stripPage
+    fun goTo(target: Int) {
+        val index = target.coerceIn(0, source.pageCount - 1)
+        scope.launch { if (paged) pagerState.scrollToPage(index) else listState.scrollToItem(index) }
+    }
+    // Switching between strip and pages keeps the place.
+    LaunchedEffect(paged) {
+        if (paged) pagerState.scrollToPage(stripPage) else listState.scrollToItem(pagerState.currentPage)
+        scale = 1f
+        offsetX = 0f
+        offsetY = 0f
+    }
     // Paper pages are inverted at night; comic art would look wrong inverted, so it stays as is.
     val inverted = source.isPaper && (theme == ReaderTheme.NIGHT || theme == ReaderTheme.BLACK)
     val filter = remember(inverted) { if (inverted) ColorFilter.colorMatrix(INVERT) else null }
 
+    val currentPage by rememberUpdatedState(page)
     LaunchedEffect(Unit) {
-        snapshotFlow { page }.distinctUntilChanged().debounce(400).collect { viewModel.onPageShown(it) }
+        snapshotFlow { currentPage }.distinctUntilChanged().debounce(400).collect { viewModel.onPageShown(it) }
     }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val widthPx = constraints.maxWidth
+        val heightPx = constraints.maxHeight
         // Zoomed pages are redrawn sharper, up to twice the screen width.
         val quality = if (scale > 1.4f) 2f else 1f
         val renderWidth = (widthPx * quality).roundToInt()
-        LazyColumn(
-            state = listState,
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(Unit) {
-                    // Two fingers zoom and pan sideways; one finger is left to the list for scrolling.
-                    awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false)
-                        do {
-                            // The Initial pass runs before the list, so a pinch never scrolls it.
-                            val event = awaitPointerEvent(PointerEventPass.Initial)
-                            if (event.changes.count { it.pressed } >= 2) {
-                                val newScale = (scale * event.calculateZoom()).coerceIn(1f, 5f)
-                                val maxOffset = widthPx * (newScale - 1) / 2
-                                offsetX = (offsetX + event.calculatePan().x).coerceIn(-maxOffset, maxOffset)
-                                scale = newScale
-                                event.changes.forEach { it.consume() }
-                            }
-                        } while (event.changes.any { it.pressed })
-                    }
+        val gestures = Modifier
+            .pointerInput(paged) {
+                // Two fingers zoom and pan; one finger is left to the list or pager.
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    do {
+                        // The Initial pass runs before the list, so a pinch never scrolls it.
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        if (event.changes.count { it.pressed } >= 2) {
+                            val newScale = (scale * event.calculateZoom()).coerceIn(1f, 5f)
+                            val maxX = widthPx * (newScale - 1) / 2
+                            val maxY = if (paged) heightPx * (newScale - 1) / 2 else 0f
+                            val pan = event.calculatePan()
+                            offsetX = (offsetX + pan.x).coerceIn(-maxX, maxX)
+                            offsetY = (offsetY + pan.y).coerceIn(-maxY, maxY)
+                            scale = newScale
+                            event.changes.forEach { it.consume() }
+                        }
+                    } while (event.changes.any { it.pressed })
                 }
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onDoubleTap = {
-                            if (scale > 1f) {
-                                scale = 1f
-                                offsetX = 0f
-                            } else {
-                                scale = 2f
-                                offsetX = ((widthPx / 2f) - it.x).coerceIn(-widthPx / 2f, widthPx / 2f)
-                            }
-                        },
-                        onTap = { controls = !controls },
-                    )
+            }
+            .pointerInput(paged) {
+                detectTapGestures(
+                    onDoubleTap = {
+                        if (scale > 1f) {
+                            scale = 1f
+                            offsetX = 0f
+                            offsetY = 0f
+                        } else {
+                            scale = 2f
+                            offsetX = ((widthPx / 2f) - it.x).coerceIn(-widthPx / 2f, widthPx / 2f)
+                            if (paged) offsetY = ((heightPx / 2f) - it.y).coerceIn(-heightPx / 2f, heightPx / 2f)
+                        }
+                    },
+                    onTap = {
+                        val third = widthPx / 3f
+                        when {
+                            paged && scale == 1f && it.x < third -> goTo(page - 1)
+                            paged && scale == 1f && it.x > third * 2 -> goTo(page + 1)
+                            else -> controls = !controls
+                        }
+                    },
+                )
+            }
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                translationX = offsetX
+                translationY = offsetY
+            }
+
+        if (paged) {
+            HorizontalPager(
+                state = pagerState,
+                userScrollEnabled = scale == 1f,
+                beyondViewportPageCount = 1,
+                modifier = Modifier.fillMaxSize().then(gestures),
+            ) { index ->
+                Box(Modifier.fillMaxSize().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                    PageImage(source, index, renderWidth, crop, filter, theme, fit = true)
                 }
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                    translationX = offsetX
-                },
-        ) {
-            items(source.pageCount) { index ->
-                PageImage(source, index, renderWidth, filter, theme)
+            }
+        } else {
+            LazyColumn(
+                state = listState,
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxSize().then(gestures),
+            ) {
+                items(source.pageCount) { index ->
+                    PageImage(source, index, renderWidth, crop, filter, theme, fit = false)
+                }
             }
         }
 
@@ -219,6 +279,9 @@ private fun PageBook(book: PageBookState.Ready, theme: ReaderTheme, viewModel: P
                             tint = if (marked) theme.accent else theme.text,
                         )
                     }
+                    IconButton(onClick = { showSettings = true }) {
+                        Icon(Icons.Filled.Tune, "Вид страниц", tint = theme.text)
+                    }
                 }
             }
         }
@@ -240,7 +303,7 @@ private fun PageBook(book: PageBookState.Ready, theme: ReaderTheme, viewModel: P
                             onValueChangeFinished = {
                                 val target = dragging?.roundToInt() ?: page
                                 dragging = null
-                                scope.launch { listState.scrollToItem(target) }
+                                goTo(target)
                             },
                             valueRange = 0f..(source.pageCount - 1).toFloat(),
                             colors = SliderDefaults.colors(thumbColor = theme.accent, activeTrackColor = theme.accent),
@@ -248,6 +311,12 @@ private fun PageBook(book: PageBookState.Ready, theme: ReaderTheme, viewModel: P
                     }
                 }
             }
+        }
+    }
+
+    if (showSettings) {
+        ModalBottomSheet(onDismissRequest = { showSettings = false }) {
+            PageSettings(prefs, source.isPaper) { transform -> viewModel.updatePrefs(transform) }
         }
     }
 
@@ -271,7 +340,7 @@ private fun PageBook(book: PageBookState.Ready, theme: ReaderTheme, viewModel: P
                         },
                         modifier = Modifier.clickable {
                             showBookmarks = false
-                            scope.launch { listState.scrollToItem(mark.chapter.coerceIn(0, source.pageCount - 1)) }
+                            goTo(mark.chapter)
                         },
                     )
                     HorizontalDivider()
@@ -282,12 +351,68 @@ private fun PageBook(book: PageBookState.Ready, theme: ReaderTheme, viewModel: P
     }
 }
 
+/** How fixed pages are shown: strip or one at a time, margins, theme. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PageImage(source: PageSource, index: Int, width: Int, filter: ColorFilter?, theme: ReaderTheme) {
-    val bitmap by produceState<Bitmap?>(null, source, index, width) {
-        value = runCatching { source.render(index, width.coerceIn(1, MAX_RENDER_WIDTH)) }.getOrNull()
+fun PageSettings(prefs: ReaderPrefs, isPaper: Boolean, update: ((ReaderPrefs) -> ReaderPrefs) -> Unit) {
+    Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text("Вид страниц", style = MaterialTheme.typography.titleLarge)
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            listOf(false to "Лентой", true to "По одной").forEachIndexed { index, (value, label) ->
+                SegmentedButton(
+                    selected = prefs.pagedPages == value,
+                    onClick = { update { it.copy(pagedPages = value) } },
+                    shape = SegmentedButtonDefaults.itemShape(index, 2),
+                ) { Text(label, maxLines = 1) }
+            }
+        }
+        if (isPaper) {
+            Row(
+                Modifier.fillMaxWidth().clickable { update { it.copy(cropMargins = !it.cropMargins) } },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Обрезать поля", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Белые края страницы убираются, текст становится крупнее",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = prefs.cropMargins, onCheckedChange = { v -> update { it.copy(cropMargins = v) } })
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            ReaderTheme.entries.forEach { theme ->
+                val selected = theme == prefs.theme
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .background(theme.background, MaterialTheme.shapes.medium)
+                        .border(
+                            if (selected) 2.5.dp else 1.dp,
+                            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                            MaterialTheme.shapes.medium,
+                        )
+                        .clickable { update { it.copy(theme = theme) } },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(theme.label, color = theme.text, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PageImage(source: PageSource, index: Int, width: Int, crop: Boolean, filter: ColorFilter?, theme: ReaderTheme, fit: Boolean) {
+    val bitmap by produceState<Bitmap?>(null, source, index, width, crop) {
+        value = runCatching { source.render(index, width.coerceIn(1, MAX_RENDER_WIDTH), crop) }.getOrNull()
     }
     val current = bitmap
+    // In paged mode a page fits the screen whole; in the strip it fills the width.
+    val sizing = if (fit) Modifier.fillMaxSize() else Modifier.fillMaxWidth()
     if (current == null) {
         Box(
             Modifier.fillMaxWidth().aspectRatio(1f / source.aspect(index)).background(theme.secondary.copy(alpha = 0.08f)),
@@ -300,9 +425,9 @@ private fun PageImage(source: PageSource, index: Int, width: Int, filter: ColorF
         Image(
             bitmap = image,
             contentDescription = "Страница ${index + 1}",
-            contentScale = ContentScale.FillWidth,
+            contentScale = if (fit) ContentScale.Fit else ContentScale.FillWidth,
             colorFilter = filter,
-            modifier = Modifier.fillMaxWidth().aspectRatio(current.width.toFloat() / current.height),
+            modifier = if (fit) sizing else sizing.aspectRatio(current.width.toFloat() / current.height),
         )
     }
 }

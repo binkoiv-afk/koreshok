@@ -78,6 +78,11 @@ class PageReaderViewModel(private val uri: String, private val app: KoreshokApp)
         }
     }
 
+    fun updatePrefs(transform: (ReaderPrefs) -> ReaderPrefs) {
+        val current = prefs.value ?: return
+        viewModelScope.launch { app.readerSettings.save(transform(current)) }
+    }
+
     fun deleteBookmark(id: Long) {
         viewModelScope.launch { library.deleteAnnotation(id) }
     }
