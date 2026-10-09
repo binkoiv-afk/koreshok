@@ -28,6 +28,13 @@ import app.koreshok.ui.search.CatalogSearch
 import app.koreshok.ui.search.SearchContent
 import app.koreshok.ui.search.SearchSection
 import app.koreshok.ui.theme.KoreshokTheme
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
+import app.koreshok.sync.SyncAccount
+import app.koreshok.sync.SyncCard
+import app.koreshok.sync.SyncPrefs
+import app.koreshok.sync.SyncSetup
+import app.koreshok.sync.SyncStatus
 import app.koreshok.core.document.BlockKind
 import app.koreshok.core.document.Chapter
 import app.koreshok.core.document.Document
@@ -214,6 +221,17 @@ class ScreensTest {
                 )
             },
         )
+    }
+
+    @Test fun sync() = snap("sync") {
+        androidx.compose.foundation.layout.Column(
+            Modifier.padding(20.dp),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp),
+        ) {
+            SyncCard(SyncPrefs(null, null), SyncStatus.Idle, {}, {}, {})
+            SyncCard(SyncPrefs(SyncAccount(SyncAccount.YANDEX, "igor", "x"), 0), SyncStatus.Done(0, 3), {}, {}, {})
+            SyncSetup({ null }, {})
+        }
     }
 
     @Test fun libraries() = snap("libraries") { CatalogList(catalogs, {}, {}, {}) }

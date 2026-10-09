@@ -17,6 +17,9 @@ interface BookDao {
     @Query("SELECT uri, sizeBytes, modifiedAt FROM books WHERE folderUri = :folderUri")
     suspend fun stamps(folderUri: String): List<FileStamp>
 
+    @Query("SELECT * FROM books")
+    suspend fun all(): List<BookEntity>
+
     @Query("SELECT * FROM books WHERE uri = :uri")
     suspend fun get(uri: String): BookEntity?
 
@@ -52,6 +55,9 @@ interface FolderDao {
 interface AnnotationDao {
     @Query("SELECT * FROM annotations WHERE bookUri = :bookUri ORDER BY chapter, block, start")
     fun observeForBook(bookUri: String): Flow<List<AnnotationEntity>>
+
+    @Query("SELECT * FROM annotations")
+    suspend fun all(): List<AnnotationEntity>
 
     @Upsert
     suspend fun upsert(annotation: AnnotationEntity): Long

@@ -29,6 +29,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import app.koreshok.sync.SyncCard
+import app.koreshok.sync.SyncSetupSheet
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -75,7 +79,15 @@ fun HomeScreen(onRead: (String) -> Unit) {
     val app = context.applicationContext as KoreshokApp
     val news by app.discover.news.collectAsStateWithLifecycle()
     // Checks favourite authors for new books once per launch, so the badge can say so.
-    LaunchedEffect(Unit) { app.discover.refresh() }
+    LaunchedEffect(Unit) {
+        app.discover.refresh()
+        // Also runs when coming back from a book, so the other devices see where reading stopped.
+        app.sync.syncInBackground()
+    }
+    val syncPrefs by app.sync.settings.prefs.collectAsStateWithLifecycle(initialValue = null)
+    val syncStatus by app.sync.status.collectAsStateWithLifecycle()
+    var syncSetup by rememberSaveable { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val shelfBooks = remember(state) { (state.reading + state.groups.flatMap { it.items }).distinctBy { it.uri } }
 
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -153,6 +165,15 @@ fun HomeScreen(onRead: (String) -> Unit) {
                     onRescan = library::rescan,
                     onCheckUpdate = { library.checkForUpdate() },
                     onUpdate = { library.downloadUpdate(context) },
+                    sync = {
+                        SyncCard(
+                            prefs = syncPrefs,
+                            status = syncStatus,
+                            onSyncNow = app.sync::syncNow,
+                            onSetup = { syncSetup = true },
+                            onDisconnect = { scope.launch { app.sync.disconnect() } },
+                        )
+                    },
                 )
             }
         }
@@ -167,6 +188,9 @@ fun HomeScreen(onRead: (String) -> Unit) {
             onGroup = library::setGroupBy,
             onDismiss = { arranging = false },
         )
+    }
+    if (syncSetup) {
+        SyncSetupSheet(onConnect = app.sync::connect, onDismiss = { syncSetup = false })
     }
     randomUri?.let { uri ->
         val book = shelfBooks.firstOrNull { it.uri == uri }

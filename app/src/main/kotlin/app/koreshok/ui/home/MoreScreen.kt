@@ -57,6 +57,7 @@ fun MoreContent(
     onRescan: () -> Unit,
     onCheckUpdate: () -> Unit,
     onUpdate: () -> Unit,
+    sync: @Composable () -> Unit = {},
 ) {
     Column(
         Modifier
@@ -107,6 +108,8 @@ fun MoreContent(
                 }
             }
         }
+
+        sync()
 
         Card {
             Row(verticalAlignment = Alignment.CenterVertically) {
