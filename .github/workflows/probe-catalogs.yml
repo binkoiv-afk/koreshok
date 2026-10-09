@@ -1,0 +1,25 @@
+name: Probe catalogs
+
+# Manual check that the built-in OPDS catalogs answer, and what their search links look like.
+on:
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: Space-separated catalog URLs
+        required: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch
+        env:
+          URLS: ${{ inputs.urls }}
+        run: |
+          for u in $URLS; do
+            echo "=================== $u"
+            curl -sS -L -m 20 -A "Koreshok/0.1 (Android)" -o body -w "HTTP %{http_code} %{content_type} -> %{url_effective}\n" "$u" || true
+            head -c 2500 body 2>/dev/null; echo
+            grep -o '<link[^>]*search[^>]*>' body 2>/dev/null | head -5
+            rm -f body
+          done
