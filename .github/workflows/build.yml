@@ -26,7 +26,7 @@ jobs:
       # The signing key is created here, once, encrypted with the owner's own KEYSTORE_PASSWORD
       # secret, and committed; nobody else ever sees the password.
       - name: Create signing key on first run
-        if: github.event_name == 'push' && env.KEYSTORE_PASSWORD != '' && hashFiles('app/signing/koreshok.jks') == ''
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && env.KEYSTORE_PASSWORD != '' && hashFiles('app/signing/koreshok.jks') == ''
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
