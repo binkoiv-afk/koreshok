@@ -20,6 +20,7 @@ jobs:
         env:
           URLS: ${{ inputs.urls }}
         run: |
+          set +e
           for u in $URLS; do
             echo "=================== $u"
             curl -sS -L -m 20 -A "Koreshok/0.1 (Android)" -o body -w "HTTP %{http_code} %{content_type} -> %{url_effective}\n" "$u" 2>&1 || true
