@@ -13,7 +13,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "book-reader"
+rootProject.name = "koreshok"
 
 include(":core")
 // -PcoreOnly lets the pure-Kotlin core build and test on machines without an Android SDK.

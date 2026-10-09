@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "app.bookreader"
+    namespace = "app.koreshok"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "app.bookreader"
+        applicationId = "app.koreshok"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
