@@ -7,5 +7,6 @@ kotlin {
 }
 
 dependencies {
+    implementation(libs.jsoup)
     testImplementation(libs.junit)
 }

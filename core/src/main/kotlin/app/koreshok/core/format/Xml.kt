@@ -11,8 +11,10 @@ import javax.xml.parsers.DocumentBuilderFactory
 internal fun parseXml(input: InputStream): Document {
     val factory = DocumentBuilderFactory.newInstance().apply {
         isNamespaceAware = true
-        // Books are untrusted input: no DTDs, no external entities.
-        trySetFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+        // Books are untrusted input: DOCTYPEs are tolerated, but nothing external is loaded
+        // and secure processing caps entity expansion.
+        trySetFeature(javax.xml.XMLConstants.FEATURE_SECURE_PROCESSING, true)
+        trySetFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
         trySetFeature("http://xml.org/sax/features/external-general-entities", false)
         trySetFeature("http://xml.org/sax/features/external-parameter-entities", false)
         isExpandEntityReferences = false

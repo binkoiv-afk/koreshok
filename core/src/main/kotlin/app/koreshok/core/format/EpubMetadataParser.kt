@@ -40,7 +40,7 @@ object EpubMetadataParser {
         )
     }
 
-    private fun findOpfPath(epub: ByteArray): String? {
+    internal fun findOpfPath(epub: ByteArray): String? {
         val container = readZipEntry(epub, "META-INF/container.xml")
         if (container != null) {
             val root = parseXml(ByteArrayInputStream(container)).documentElement
