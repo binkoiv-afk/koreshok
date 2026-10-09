@@ -21,6 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -64,9 +65,18 @@ val DarkShelf = ShelfColors(
     shadow = Color(0xFF000000),
 )
 
-/** The warm wall behind the shelves. */
+/** The warm wall behind the shelves, with a soft pool of lamp light near the top. */
 fun Modifier.shelfWall(colors: ShelfColors): Modifier =
     background(Brush.verticalGradient(listOf(colors.wallTop, colors.wallBottom)))
+        .drawBehind {
+            drawRect(
+                Brush.radialGradient(
+                    listOf(Color(0xFFFFE2B0).copy(alpha = 0.22f), Color.Transparent),
+                    center = Offset(size.width * 0.5f, 0f),
+                    radius = size.width * 0.9f,
+                ),
+            )
+        }
 
 /**
  * A wooden board seen slightly from above: a lit top surface, the front edge with grain, and a
@@ -74,9 +84,9 @@ fun Modifier.shelfWall(colors: ShelfColors): Modifier =
  */
 @Composable
 fun ShelfBoard(colors: ShelfColors, seed: Int, modifier: Modifier = Modifier) {
-    Canvas(modifier.fillMaxWidth().height(30.dp)) {
-        val top = 8.dp.toPx()
-        val front = 13.dp.toPx()
+    Canvas(modifier.fillMaxWidth().height(34.dp)) {
+        val top = 9.dp.toPx()
+        val front = 15.dp.toPx()
         val w = size.width
         // Top surface, narrowing towards the wall.
         val inset = 6.dp.toPx()
@@ -129,7 +139,12 @@ fun <T> ShelfRow(
 ) {
     Column(Modifier.fillMaxWidth()) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = horizontalPadding + 6.dp),
+            Modifier
+                .fillMaxWidth()
+                // The back of the shelf darkens towards the board, where less light reaches.
+                .background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to colors.shadow.copy(alpha = 0.10f)))
+                .padding(top = 10.dp)
+                .padding(horizontal = horizontalPadding + 6.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
