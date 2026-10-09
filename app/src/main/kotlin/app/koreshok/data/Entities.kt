@@ -29,6 +29,8 @@ data class BookEntity(
     override val addedAt: Long,
     override val lastOpenedAt: Long? = null,
     override val progress: Float = 0f,
+    /** Where reading stopped, as Position.serialize() from the core document model. */
+    val position: String? = null,
 ) : ShelfItem
 
 @Entity(tableName = "folders")

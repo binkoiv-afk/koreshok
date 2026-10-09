@@ -23,6 +23,9 @@ interface BookDao {
     @Upsert
     suspend fun upsert(book: BookEntity)
 
+    @Query("UPDATE books SET position = :position, progress = :progress, lastOpenedAt = :openedAt WHERE uri = :uri")
+    suspend fun saveProgress(uri: String, position: String, progress: Float, openedAt: Long)
+
     @Query("DELETE FROM books WHERE uri IN (:uris)")
     suspend fun delete(uris: List<String>)
 

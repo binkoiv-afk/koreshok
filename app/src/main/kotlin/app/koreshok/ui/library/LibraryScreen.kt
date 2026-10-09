@@ -2,7 +2,11 @@ package app.koreshok.ui.library
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -60,13 +64,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import app.koreshok.core.document.Documents
 import app.koreshok.core.format.Fb2Genres
+import app.koreshok.core.model.BookFormat
 import app.koreshok.core.library.GroupBy
 import app.koreshok.core.library.SortOrder
 import app.koreshok.data.BookEntity
@@ -75,7 +82,22 @@ import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LibraryScreen(viewModel: LibraryViewModel = viewModel(factory = LibraryViewModel.Factory)) {
+fun LibraryScreen(
+    onRead: (uri: String) -> Unit,
+    viewModel: LibraryViewModel = viewModel(factory = LibraryViewModel.Factory),
+) {
+    val context = LocalContext.current
+    val open: (BookEntity) -> Unit = { book ->
+        if (BookFormat.valueOf(book.format) in Documents.supported) {
+            onRead(book.uri)
+        } else {
+            // Until their engines land, other formats open in whatever app the phone has for them.
+            val intent = Intent(Intent.ACTION_VIEW)
+                .setData(Uri.parse(book.uri))
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            runCatching { context.startActivity(Intent.createChooser(intent, book.title)) }
+        }
+    }
     val state by viewModel.state.collectAsStateWithLifecycle()
     var searching by rememberSaveable { mutableStateOf(false) }
     var showFolders by remember { mutableStateOf(false) }
@@ -147,7 +169,7 @@ fun LibraryScreen(viewModel: LibraryViewModel = viewModel(factory = LibraryViewM
             when {
                 !state.loaded -> Unit
                 state.totalBooks == 0 && state.scan == null -> EmptyLibrary { pickFolder.launch(null) }
-                else -> Shelf(state, onOpen = { selected = it })
+                else -> Shelf(state, onOpen = open, onDetails = { selected = it })
             }
         }
     }
@@ -161,7 +183,9 @@ fun LibraryScreen(viewModel: LibraryViewModel = viewModel(factory = LibraryViewM
             onDismiss = { showFolders = false },
         )
     }
-    selected?.let { book -> BookDetailsSheet(book) { selected = null } }
+    selected?.let { book ->
+        BookDetailsSheet(book, onRead = { selected = null; open(book) }) { selected = null }
+    }
 }
 
 private fun booksCount(n: Int): String {
@@ -236,7 +260,7 @@ private fun EmptyLibrary(onAddFolder: () -> Unit) {
 }
 
 @Composable
-private fun Shelf(state: LibraryState, onOpen: (BookEntity) -> Unit) {
+private fun Shelf(state: LibraryState, onOpen: (BookEntity) -> Unit, onDetails: (BookEntity) -> Unit) {
     val nothingFound = state.groups.all { it.items.isEmpty() }
     if (nothingFound) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -264,15 +288,21 @@ private fun Shelf(state: LibraryState, onOpen: (BookEntity) -> Unit) {
             }
             // A book can sit in several genre groups, so keys include the group.
             items(group.items, key = { "${group.title}:${it.uri}" }) { book ->
-                BookCard(book, showSeriesNumber = state.prefs.groupBy == GroupBy.SERIES, onClick = { onOpen(book) })
+                BookCard(
+                    book,
+                    showSeriesNumber = state.prefs.groupBy == GroupBy.SERIES,
+                    onClick = { onOpen(book) },
+                    onLongClick = { onDetails(book) },
+                )
             }
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun BookCard(book: BookEntity, showSeriesNumber: Boolean, onClick: () -> Unit) {
-    Column(Modifier.clickable(onClick = onClick)) {
+private fun BookCard(book: BookEntity, showSeriesNumber: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
+    Column(Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
         Cover(book, Modifier.fillMaxWidth().aspectRatio(2f / 3f))
         if (book.progress > 0f) {
             LinearProgressIndicator(
@@ -385,7 +415,7 @@ private fun FoldersSheet(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BookDetailsSheet(book: BookEntity, onDismiss: () -> Unit) {
+private fun BookDetailsSheet(book: BookEntity, onRead: () -> Unit, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             Modifier
@@ -430,11 +460,9 @@ private fun BookDetailsSheet(book: BookEntity, onDismiss: () -> Unit) {
                 Text(it, style = MaterialTheme.typography.bodyMedium)
             }
             Spacer(Modifier.height(16.dp))
-            Text(
-                "Чтение появится в следующем шаге.",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            FilledTonalButton(onClick = onRead, modifier = Modifier.fillMaxWidth()) {
+                Text(if (book.progress > 0f) "Продолжить чтение" else "Читать")
+            }
         }
     }
 }

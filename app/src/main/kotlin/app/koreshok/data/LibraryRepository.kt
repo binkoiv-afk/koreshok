@@ -49,6 +49,17 @@ class LibraryRepository(
         }
     }
 
+    suspend fun book(uri: String): BookEntity? = db.books().get(uri)
+
+    suspend fun saveProgress(uri: String, position: String, progress: Float) =
+        db.books().saveProgress(uri, position, progress, System.currentTimeMillis())
+
+    /** Reads a whole book file. Books are opened from the folder in place, never copied. */
+    suspend fun readBytes(uri: String): ByteArray = withContext(Dispatchers.IO) {
+        context.contentResolver.openInputStream(Uri.parse(uri))?.use { it.readBytes() }
+            ?: throw java.io.FileNotFoundException(uri)
+    }
+
     suspend fun rescanAll() {
         for (folder in db.folders().all()) rescan(folder.uri)
     }
@@ -123,6 +134,7 @@ class LibraryRepository(
                 addedAt = previous?.addedAt ?: System.currentTimeMillis(),
                 lastOpenedAt = previous?.lastOpenedAt,
                 progress = previous?.progress ?: 0f,
+                position = previous?.position,
             ),
         )
     }
