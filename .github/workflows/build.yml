@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+env:
+  # Mirrored at workflow level so step conditions can test whether the secret exists.
+  KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -19,6 +23,22 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
+      # The signing key is created here, once, encrypted with the owner's own KEYSTORE_PASSWORD
+      # secret, and committed; nobody else ever sees the password.
+      - name: Create signing key on first run
+        if: github.event_name == 'push' && env.KEYSTORE_PASSWORD != '' && hashFiles('app/signing/koreshok.jks') == ''
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          mkdir -p app/signing
+          keytool -genkeypair -keystore app/signing/koreshok.jks -storetype PKCS12 -alias koreshok \
+            -keyalg RSA -keysize 4096 -validity 36500 \
+            -storepass "$KEYSTORE_PASSWORD" -keypass "$KEYSTORE_PASSWORD" -dname "CN=Koreshok"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/signing/koreshok.jks
+          git commit -m "Add release signing key"
+          git push
       - name: Test and build
         run: ./gradlew :core:test :app:assembleRelease
         env:

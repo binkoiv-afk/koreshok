@@ -7,9 +7,10 @@ plugins {
 
 // CI passes the run number, so every published build has a higher version than the last.
 val buildNumber = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
-// The release key lives in the repo, encrypted; its password is a GitHub secret. Without it
-// (local builds, or before the secret exists) the build falls back to the debug key.
+// The release key lives in the repo, encrypted; its password is a GitHub secret. Without either
+// (local builds, or before the owner sets the secret) the build falls back to the debug key.
 val keystorePassword: String? = System.getenv("KEYSTORE_PASSWORD")?.takeIf { it.isNotEmpty() }
+    ?.takeIf { file("signing/koreshok.jks").exists() }
 
 android {
     namespace = "app.koreshok"
