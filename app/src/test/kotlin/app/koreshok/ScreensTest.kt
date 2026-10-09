@@ -91,6 +91,10 @@ class ScreensTest {
         SearchContent("", "", catalogs, emptySet(), emptyList(), emptyList(), emptyMap(), {}, {}, {}, {}, { _, _ -> }, {}, { _, _ -> })
     }
 
+    @Test fun readerSettings() = snap("reader_settings") {
+        app.koreshok.ui.reader.ReaderSettingsPanel(app.koreshok.ui.reader.ReaderPrefs()) {}
+    }
+
     @Test fun libraries() = snap("libraries") { CatalogList(catalogs, {}, {}, {}) }
 
     @Test fun more() = snap("more") {
