@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -22,6 +23,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -120,19 +122,27 @@ private fun GeneratedCover(title: String, author: String?, compact: Boolean) {
             } else {
                 Spacer(Modifier.height(1.dp))
             }
-            Text(
-                title,
-                color = foil,
-                style = TextStyle(
-                    fontFamily = FontFamily.Serif,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = if (compact) 10.sp else 15.sp,
-                    lineHeight = if (compact) 12.sp else 18.sp,
-                ),
-                textAlign = TextAlign.Center,
-                maxLines = if (compact) 4 else 5,
-                overflow = TextOverflow.Ellipsis,
-            )
+            // Long words would break mid-word on a narrow cover, so the size shrinks to fit the longest one.
+            BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                val density = LocalDensity.current
+                val base = if (compact) 10f else 15f
+                val longest = title.split(' ', '-').maxOfOrNull { it.length }?.coerceAtLeast(1) ?: 1
+                val fitting = with(density) { maxWidth.toPx() } / (longest * 0.6f) / (density.density * density.fontScale)
+                val size = minOf(base, fitting).coerceAtLeast(6f)
+                Text(
+                    title,
+                    color = foil,
+                    style = TextStyle(
+                        fontFamily = FontFamily.Serif,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = size.sp,
+                        lineHeight = (size * 1.2f).sp,
+                    ),
+                    textAlign = TextAlign.Center,
+                    maxLines = if (compact) 4 else 5,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Box(Modifier.width(18.dp).height(0.8.dp).background(foil.copy(alpha = 0.6f)))
         }
     }

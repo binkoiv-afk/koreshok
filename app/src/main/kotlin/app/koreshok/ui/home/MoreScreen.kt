@@ -103,7 +103,7 @@ fun MoreContent(
                 TextButton(onClick = onRescan, enabled = folders.isNotEmpty() && scan == null) {
                     Icon(Icons.Default.Refresh, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Пересканировать")
+                    Text("Обновить")
                 }
             }
         }

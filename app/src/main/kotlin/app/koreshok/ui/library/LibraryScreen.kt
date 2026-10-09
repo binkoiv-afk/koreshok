@@ -64,7 +64,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -81,6 +84,7 @@ import app.koreshok.ui.components.BookCover
 import app.koreshok.ui.components.CoverCaption
 import app.koreshok.ui.pages.PageSource
 import app.koreshok.ui.theme.BookTitleStyle
+import app.koreshok.ui.theme.Brand
 import java.io.File
 import kotlin.math.roundToInt
 
@@ -117,7 +121,7 @@ class ShelfActions(
 @Composable
 fun ShelfContent(state: LibraryState, update: UpdateState, actions: ShelfActions, modifier: Modifier = Modifier) {
     if (state.loaded && state.totalBooks == 0 && state.scan == null) {
-        Column(modifier.fillMaxSize()) {
+        Column(modifier.fillMaxSize().padding(horizontal = 20.dp)) {
             ShelfHeader(state, actions, showTools = false)
             EmptyLibrary(actions.onAddFolder)
         }
@@ -251,13 +255,14 @@ fun booksCount(n: Int): String {
 /** The book being read right now, big, with one button to get back into it. */
 @Composable
 private fun ContinueCard(book: BookEntity, actions: ShelfActions) {
-    val colors = MaterialTheme.colorScheme
+    // The brand's bottle green in both themes, so the card reads the same by day and by night.
+    val ink = Color(0xFFFBF3E4)
     Box(
         Modifier
             .fillMaxWidth()
             .padding(top = 8.dp)
             .clip(MaterialTheme.shapes.large)
-            .background(Brush.linearGradient(listOf(colors.primary, colors.primary.copy(alpha = 0.82f))))
+            .background(Brush.linearGradient(listOf(Brand.Green, Brand.GreenLight)))
             .clickable { actions.onOpen(book) }
             .padding(18.dp),
     ) {
@@ -274,13 +279,13 @@ private fun ContinueCard(book: BookEntity, actions: ShelfActions) {
                 Text(
                     "ПРОДОЛЖИТЬ ЧТЕНИЕ",
                     style = MaterialTheme.typography.labelSmall,
-                    color = colors.onPrimary.copy(alpha = 0.7f),
+                    color = ink.copy(alpha = 0.7f),
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
                     book.title,
                     style = MaterialTheme.typography.titleLarge,
-                    color = colors.onPrimary,
+                    color = ink,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -288,7 +293,7 @@ private fun ContinueCard(book: BookEntity, actions: ShelfActions) {
                     Text(
                         book.authors,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = colors.onPrimary.copy(alpha = 0.8f),
+                        color = ink.copy(alpha = 0.8f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -297,8 +302,8 @@ private fun ContinueCard(book: BookEntity, actions: ShelfActions) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     LinearProgressIndicator(
                         progress = { book.progress },
-                        color = colors.onPrimary,
-                        trackColor = colors.onPrimary.copy(alpha = 0.25f),
+                        color = ink,
+                        trackColor = ink.copy(alpha = 0.25f),
                         strokeCap = StrokeCap.Round,
                         drawStopIndicator = {},
                         modifier = Modifier.weight(1f).height(5.dp),
@@ -307,7 +312,7 @@ private fun ContinueCard(book: BookEntity, actions: ShelfActions) {
                     Text(
                         "${(book.progress * 100).roundToInt()}%",
                         style = MaterialTheme.typography.labelLarge,
-                        color = colors.onPrimary,
+                        color = ink,
                     )
                 }
             }
@@ -460,10 +465,11 @@ private fun EmptyLibrary(onAddFolder: () -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy((-14).dp), verticalAlignment = Alignment.Bottom) {
-            BookCover("Мастер и Маргарита", "Булгаков", null, Modifier.width(70.dp).aspectRatio(2f / 3f), compact = true)
-            BookCover("Война и мир", "Толстой", null, Modifier.width(80.dp).aspectRatio(2f / 3f), compact = true)
-            BookCover("Дюна", "Херберт", null, Modifier.width(70.dp).aspectRatio(2f / 3f), compact = true)
+        // A small fan of books; the middle one sits on top.
+        Row(horizontalArrangement = Arrangement.spacedBy((-12).dp), verticalAlignment = Alignment.Bottom) {
+            BookCover("Мастер и Маргарита", "Булгаков", null, Modifier.width(72.dp).aspectRatio(2f / 3f).rotate(-8f), compact = true)
+            BookCover("Война и мир", "Толстой", null, Modifier.zIndex(1f).width(84.dp).aspectRatio(2f / 3f), compact = true, elevation = 12.dp)
+            BookCover("Дюна", "Херберт", null, Modifier.width(72.dp).aspectRatio(2f / 3f).rotate(8f), compact = true)
         }
         Spacer(Modifier.height(28.dp))
         Text("Полка пока пуста", style = MaterialTheme.typography.headlineSmall)
