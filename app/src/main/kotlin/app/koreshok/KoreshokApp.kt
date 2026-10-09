@@ -18,6 +18,6 @@ class KoreshokApp : Application() {
     val readerSettings by lazy { ReaderSettings(this) }
     val catalogs by lazy { CatalogService(library) }
     val taste by lazy { TasteSettings(this) }
-    val sync by lazy { SyncService(this, database, SyncSettings(this)) }
+    val sync by lazy { SyncService(this, database, SyncSettings(this), library) }
     val discover by lazy { DiscoverService(catalogs, taste, library) }
 }

@@ -61,6 +61,10 @@ class LibraryRepository(
             ?: throw java.io.FileNotFoundException(uri)
     }
 
+    /** Streams a book file, for uploading without loading it whole. */
+    fun openInput(uri: String): java.io.InputStream =
+        context.contentResolver.openInputStream(Uri.parse(uri)) ?: throw java.io.FileNotFoundException(uri)
+
     fun annotations(bookUri: String): Flow<List<AnnotationEntity>> = db.annotations().observeForBook(bookUri)
 
     suspend fun saveAnnotation(annotation: AnnotationEntity) {

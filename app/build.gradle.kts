@@ -83,6 +83,8 @@ dependencies {
     implementation(libs.androidx.documentfile)
     implementation(libs.coil.compose)
     implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.okhttp)
+    implementation(libs.play.services.auth)
 
     testImplementation(libs.junit)
 }

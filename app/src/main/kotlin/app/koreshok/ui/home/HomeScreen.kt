@@ -31,7 +31,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
+import android.app.Activity
+import androidx.activity.result.ActivityResult
+import app.koreshok.sync.CloudShelfSheet
 import app.koreshok.sync.SyncCard
+import app.koreshok.sync.signInToGoogle
+import kotlinx.coroutines.CompletableDeferred
 import app.koreshok.sync.SyncSetupSheet
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -87,6 +92,12 @@ fun HomeScreen(onRead: (String) -> Unit) {
     val syncPrefs by app.sync.settings.prefs.collectAsStateWithLifecycle(initialValue = null)
     val syncStatus by app.sync.status.collectAsStateWithLifecycle()
     var syncSetup by rememberSaveable { mutableStateOf(false) }
+    var cloudOpen by rememberSaveable { mutableStateOf(false) }
+    val cloud by app.sync.cloud.collectAsStateWithLifecycle()
+    val googleAnswer = remember { mutableStateOf<CompletableDeferred<ActivityResult>?>(null) }
+    val googleScreen = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) {
+        googleAnswer.value?.complete(it)
+    }
     val scope = rememberCoroutineScope()
     val shelfBooks = remember(state) { (state.reading + state.groups.flatMap { it.items }).distinctBy { it.uri } }
 
@@ -172,6 +183,10 @@ fun HomeScreen(onRead: (String) -> Unit) {
                             onSyncNow = app.sync::syncNow,
                             onSetup = { syncSetup = true },
                             onDisconnect = { scope.launch { app.sync.disconnect() } },
+                            onCloudBooks = {
+                                cloudOpen = true
+                                app.sync.refreshCloud()
+                            },
                         )
                     },
                 )
@@ -190,7 +205,22 @@ fun HomeScreen(onRead: (String) -> Unit) {
         )
     }
     if (syncSetup) {
-        SyncSetupSheet(onConnect = app.sync::connect, onDismiss = { syncSetup = false })
+        SyncSetupSheet(
+            onConnect = app.sync::connect,
+            onGoogle = {
+                val activity = context as Activity
+                signInToGoogle(activity) { request ->
+                    val answer = CompletableDeferred<ActivityResult>()
+                    googleAnswer.value = answer
+                    googleScreen.launch(request)
+                    answer.await()
+                } ?: app.sync.connectGoogle()
+            },
+            onDismiss = { syncSetup = false },
+        )
+    }
+    if (cloudOpen) {
+        CloudShelfSheet(cloud, onUpload = app.sync::uploadShelf, onDownload = app.sync::download, onDismiss = { cloudOpen = false })
     }
     randomUri?.let { uri ->
         val book = shelfBooks.firstOrNull { it.uri == uri }

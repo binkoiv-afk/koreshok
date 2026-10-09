@@ -30,7 +30,12 @@ import app.koreshok.ui.search.SearchSection
 import app.koreshok.ui.theme.KoreshokTheme
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
+import app.koreshok.sync.CloudBook
+import app.koreshok.sync.CloudShelf
+import app.koreshok.sync.CloudShelfContent
+import app.koreshok.sync.DiskKind
 import app.koreshok.sync.SyncAccount
+import app.koreshok.sync.Transfer
 import app.koreshok.sync.SyncCard
 import app.koreshok.sync.SyncPrefs
 import app.koreshok.sync.SyncSetup
@@ -229,9 +234,25 @@ class ScreensTest {
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp),
         ) {
             SyncCard(SyncPrefs(null, null), SyncStatus.Idle, {}, {}, {})
-            SyncCard(SyncPrefs(SyncAccount(SyncAccount.YANDEX, "igor", "x"), 0), SyncStatus.Done(0, 3), {}, {}, {})
-            SyncSetup({ null }, {})
+            SyncCard(SyncPrefs(SyncAccount("", "igor@gmail.com", "", DiskKind.GOOGLE), 0), SyncStatus.Done(0, 3), {}, {}, {})
+            SyncSetup({ null }, { null }, {})
         }
+    }
+
+    @Test fun cloudShelf() = snap("cloud_shelf") {
+        CloudShelfContent(
+            CloudShelf(
+                books = List(42) { CloudBook("b$it", 1, "$it") },
+                missing = listOf(
+                    CloudBook("Пелевин - Омон Ра.fb2.zip", 312_000, "1"),
+                    CloudBook("Лем - Солярис.epub", 1_480_000, "2"),
+                    CloudBook("Стругацкие - Понедельник начинается в субботу.fb2", 905_000, "3"),
+                ),
+                notUploaded = 0,
+                transfer = Transfer(upload = false, title = "Пелевин - Омон Ра", done = 0, total = 3, progress = 0.4f),
+            ),
+            {}, {},
+        )
     }
 
     @Test fun libraries() = snap("libraries") { CatalogList(catalogs, {}, {}, {}) }

@@ -9,6 +9,7 @@ import app.koreshok.data.AnnotationEntity
 import app.koreshok.data.AnnotationKind
 import app.koreshok.data.AppDatabase
 import app.koreshok.data.BookEntity
+import app.koreshok.data.LibraryRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -33,7 +34,27 @@ sealed interface SyncStatus {
  * Keeps where you stopped, bookmarks and highlights the same on every device. All devices
  * share one JSON file in a WebDAV folder; each sync merges it with this device's state.
  */
-class SyncService(context: Context, private val db: AppDatabase, val settings: SyncSettings) {
+/** A running upload or download of books. */
+data class Transfer(val upload: Boolean, val title: String, val done: Int, val total: Int, val progress: Float)
+
+/** What lies in the cloud folder, compared with this device's shelf. */
+data class CloudShelf(
+    val loading: Boolean = false,
+    val books: List<CloudBook> = emptyList(),
+    /** Cloud books missing on this device. */
+    val missing: List<CloudBook> = emptyList(),
+    /** Shelf books not yet in the cloud. */
+    val notUploaded: Int = 0,
+    val transfer: Transfer? = null,
+    val error: String? = null,
+)
+
+class SyncService(
+    private val context: Context,
+    private val db: AppDatabase,
+    val settings: SyncSettings,
+    private val library: LibraryRepository,
+) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val mutex = Mutex()
     /** What this device and the server agreed on last time, to tell deletions from additions. */
@@ -78,7 +99,7 @@ class SyncService(context: Context, private val db: AppDatabase, val settings: S
     private suspend fun runSync(account: SyncAccount): String? = mutex.withLock {
         _status.value = SyncStatus.Running
         try {
-            val changed = sync(WebDav(account))
+            val changed = sync(disk(account))
             val now = System.currentTimeMillis()
             settings.setLastSync(now)
             _status.value = SyncStatus.Done(now, changed)
@@ -90,18 +111,33 @@ class SyncService(context: Context, private val db: AppDatabase, val settings: S
         }
     }
 
-    private suspend fun sync(dav: WebDav): Int {
+    private fun disk(account: SyncAccount): CloudDisk = when (account.kind) {
+        DiskKind.WEBDAV -> WebDavDisk(account)
+        DiskKind.GOOGLE -> GoogleDriveDisk { GoogleAuth.token(context) }
+    }
+
+    /** After the user agreed on Google's screen: finds out who they are and does a first sync. */
+    suspend fun connectGoogle(): String? {
+        val email = try {
+            GoogleDriveDisk { GoogleAuth.token(context) }.email()
+        } catch (e: Exception) {
+            return e.message ?: "Google не ответил"
+        }
+        return connect(SyncAccount("", email.ifBlank { "Google" }, "", DiskKind.GOOGLE))
+    }
+
+    private suspend fun sync(dav: CloudDisk): Int {
         val books = db.books().all()
         val notes = db.annotations().all().groupBy { it.bookUri }
         val local = localSnapshot(books, notes)
-        val remote = dav.get(FILE)?.let(SyncJson::decode) ?: SyncSnapshot.EMPTY
+        val remote = dav.readState()?.let(SyncJson::decode) ?: SyncSnapshot.EMPTY
         val base = withContext(Dispatchers.IO) {
             runCatching { SyncJson.decode(baseFile.readBytes()) }.getOrDefault(SyncSnapshot.EMPTY)
         }
         val merged = SyncMerge.merge(base, local, remote)
         val changed = apply(merged, books, notes)
         val bytes = SyncJson.encode(merged)
-        if (merged != remote) dav.put(FILE, bytes)
+        if (merged != remote) dav.writeState(bytes)
         withContext(Dispatchers.IO) { baseFile.writeBytes(bytes) }
         return changed
     }
@@ -170,7 +206,87 @@ class SyncService(context: Context, private val db: AppDatabase, val settings: S
         note = n.note, text = n.text, chapterTitle = n.chapterTitle, createdAt = n.createdAt,
     )
 
-    private companion object {
-        const val FILE = "koreshok-sync.json"
+    private val _cloud = MutableStateFlow(CloudShelf())
+    val cloud: StateFlow<CloudShelf> = _cloud.asStateFlow()
+
+    /** Looks at the cloud folder and compares it with the shelf. */
+    fun refreshCloud() {
+        scope.launch {
+            val account = settings.prefs.first().account ?: return@launch
+            _cloud.value = _cloud.value.copy(loading = true, error = null)
+            try {
+                val books = disk(account).books()
+                _cloud.value = compare(books).copy(transfer = _cloud.value.transfer)
+            } catch (e: Exception) {
+                _cloud.value = _cloud.value.copy(loading = false, error = e.message ?: "нет связи")
+            }
+        }
     }
+
+    private suspend fun compare(cloud: List<CloudBook>): CloudShelf {
+        val shelf = db.books().all()
+        val cloudNames = cloud.map { it.name }.toSet()
+        val localNames = shelf.map { cloudName(it) }.toSet()
+        return CloudShelf(
+            books = cloud,
+            missing = cloud.filter { it.name !in localNames }.sortedBy { it.name.lowercase() },
+            notUploaded = shelf.count { cloudName(it) !in cloudNames },
+        )
+    }
+
+    /** Puts every shelf book that is not in the cloud yet there. */
+    fun uploadShelf() = transfer { disk ->
+        val cloudNames = disk.books().map { it.name }.toSet()
+        val todo = db.books().all().filter { cloudName(it) !in cloudNames }.distinctBy { cloudName(it) }
+        var failed = 0
+        todo.forEachIndexed { index, book ->
+            progress(true, book.title, index, todo.size, 0f)
+            try {
+                disk.upload(cloudName(book), book.sizeBytes, { library.openInput(book.uri) }) { progress(true, book.title, index, todo.size, it) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                failed++
+                if (failed >= 3 && failed == index + 1) throw e
+            }
+        }
+        if (failed > 0) "Не выгрузилось книг: $failed" else null
+    }
+
+    /** Downloads [books] from the cloud onto this device's shelf. */
+    fun download(books: List<CloudBook>) = transfer { disk ->
+        books.forEachIndexed { index, book ->
+            progress(false, book.name.substringBeforeLast('.'), index, books.size, 0f)
+            val target = File(library.downloadsDir, book.name)
+            val partial = File(library.downloadsDir, book.name + ".part")
+            disk.download(book, partial) { progress(false, book.name.substringBeforeLast('.'), index, books.size, it) }
+            partial.renameTo(target)
+            library.importDownloaded(target)
+        }
+        null
+    }
+
+    private fun transfer(work: suspend (CloudDisk) -> String?) {
+        if (_cloud.value.transfer != null) return
+        scope.launch {
+            val account = settings.prefs.first().account ?: return@launch
+            val disk = disk(account)
+            val problem = try {
+                work(disk)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                e.message ?: "нет связи"
+            }
+            val books = runCatching { disk.books() }.getOrNull()
+            _cloud.value = (books?.let { compare(it) } ?: _cloud.value).copy(transfer = null, error = problem)
+        }
+    }
+
+    private fun progress(upload: Boolean, title: String, done: Int, total: Int, fraction: Float) {
+        _cloud.value = _cloud.value.copy(transfer = Transfer(upload, title, done, total, fraction))
+    }
+
+    /** The name a book has in the cloud: its own file name, made safe. */
+    private fun cloudName(book: BookEntity) = book.fileName.replace(Regex("[\\\\/:*?\"<>|]"), "_")
 }
