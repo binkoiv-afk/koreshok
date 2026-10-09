@@ -11,6 +11,7 @@ import app.koreshok.KoreshokApp
 import app.koreshok.core.format.Fb2Genres
 import app.koreshok.core.library.GroupBy
 import app.koreshok.core.library.LibraryOrganizer
+import app.koreshok.core.library.ReadingStatus
 import app.koreshok.core.library.ShelfGroup
 import app.koreshok.core.library.SortOrder
 import app.koreshok.data.BookEntity
@@ -33,6 +34,10 @@ import kotlinx.coroutines.launch
 data class LibraryState(
     val groups: List<ShelfGroup<BookEntity>> = emptyList(),
     val totalBooks: Int = 0,
+    /** Started and unfinished books, most recently opened first, for "Продолжить чтение". */
+    val reading: List<BookEntity> = emptyList(),
+    val status: ReadingStatus? = null,
+    val statusCounts: Map<ReadingStatus, Int> = emptyMap(),
     val folders: List<FolderEntity> = emptyList(),
     val prefs: ShelfPrefs = ShelfPrefs(),
     val query: String = "",
@@ -54,19 +59,27 @@ class LibraryViewModel(
 ) : ViewModel() {
 
     private val query = MutableStateFlow("")
+    private val status = MutableStateFlow<ReadingStatus?>(null)
+    private val filters = combine(query, status) { q, s -> q to s }
 
     val state: StateFlow<LibraryState> = combine(
         library.books,
         library.folders,
         settings.prefs,
-        query,
+        filters,
         library.scan,
-    ) { books, folders, prefs, query, scan ->
+    ) { books, folders, prefs, (query, status), scan ->
         val visible = LibraryOrganizer.filter(books, query)
+            .filter { status == null || ReadingStatus.of(it.progress) == status }
         val sorted = LibraryOrganizer.sort(visible, prefs.sort, prefs.descending)
         LibraryState(
             groups = LibraryOrganizer.group(sorted, prefs.groupBy, Fb2Genres::displayName),
             totalBooks = books.size,
+            reading = books
+                .filter { ReadingStatus.of(it.progress) == ReadingStatus.READING && it.lastOpenedAt != null }
+                .sortedByDescending { it.lastOpenedAt },
+            status = status,
+            statusCounts = books.groupingBy { ReadingStatus.of(it.progress) }.eachCount(),
             folders = folders,
             prefs = prefs,
             query = query,
@@ -140,6 +153,12 @@ class LibraryViewModel(
     }
 
     fun setGroupBy(groupBy: GroupBy) = viewModelScope.launch { settings.setGroupBy(groupBy) }
+
+    fun setList(value: Boolean) = viewModelScope.launch { settings.setList(value) }
+
+    fun setStatus(value: ReadingStatus?) {
+        status.value = value
+    }
 
     fun addFolder(uri: Uri) = viewModelScope.launch { library.addFolder(uri) }
 

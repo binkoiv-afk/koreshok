@@ -44,6 +44,23 @@ jobs:
         env:
           VERSION_CODE: ${{ github.run_number }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      # Pictures of the main screens, rendered on the JVM; attached to the service pre-release.
+      - name: Screenshots
+        continue-on-error: true
+        run: ./gradlew :app:recordPaparazziDebug
+      - name: Publish screenshots
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view probe >/dev/null 2>&1 || \
+            gh release create probe --prerelease --latest=false --title "Служебное" --notes "Служебные отчёты сборки, не для установки."
+          mkdir -p screens
+          for f in app/src/test/snapshots/images/*.png; do
+            name=$(basename "$f" | sed 's/^app.koreshok_ScreensTest_//')
+            cp "$f" "screens/$name"
+          done
+          gh release upload probe screens/*.png --clobber
       - name: Name the APK
         run: cp app/build/outputs/apk/release/app-release.apk koreshok.apk
       - uses: actions/upload-artifact@v4

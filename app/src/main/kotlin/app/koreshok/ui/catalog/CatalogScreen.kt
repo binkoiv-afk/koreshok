@@ -1,6 +1,14 @@
 package app.koreshok.ui.catalog
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.ui.graphics.Color
+import app.koreshok.core.opds.OpdsPresets
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -64,10 +72,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import app.koreshok.core.opds.OpdsEntry
 import coil.compose.AsyncImage
 
+/** The libraries tab: the list of catalogs, and inside one of them its pages. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CatalogScreen(
-    onBack: () -> Unit,
     onRead: (uri: String) -> Unit,
     viewModel: CatalogViewModel = viewModel(factory = CatalogViewModel.Factory),
 ) {
@@ -78,35 +86,43 @@ fun CatalogScreen(
     var showAdd by remember { mutableStateOf(false) }
     var removing by remember { mutableStateOf<CatalogLink?>(null) }
 
-    BackHandler { if (!viewModel.back()) onBack() }
+    BackHandler(enabled = top != null) { viewModel.back() }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(top?.title ?: "Каталоги", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                },
-                navigationIcon = {
-                    IconButton(onClick = { if (!viewModel.back()) onBack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад")
-                    }
-                },
-            )
-        },
-        floatingActionButton = {
-            if (top == null) {
-                FloatingActionButton(onClick = { showAdd = true }) { Icon(Icons.Default.Add, "Добавить каталог") }
-            }
-        },
-    ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
-            if (top == null) {
-                CatalogList(
-                    catalogs = catalogs,
-                    onOpen = { viewModel.open(it.url, it.title) },
-                    onRemove = { removing = it },
+    if (top == null) {
+        CatalogList(
+            catalogs = catalogs,
+            onOpen = { viewModel.open(it.url, it.title) },
+            onRemove = { removing = it },
+            onAdd = { showAdd = true },
+        )
+    } else {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(top.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
+                            val root = stack.first().title
+                            if (stack.size > 1) {
+                                Text(root, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { viewModel.back() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад")
+                        }
+                    },
+                    actions = {
+                        if (stack.size > 1) {
+                            TextButton(onClick = { viewModel.closeAll() }) { Text("Все библиотеки") }
+                        }
+                    },
                 )
-            } else {
+            },
+            contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0),
+        ) { padding ->
+            Box(Modifier.padding(padding).fillMaxSize()) {
                 FeedView(
                     page = top,
                     downloads = downloads,
@@ -146,42 +162,87 @@ fun CatalogScreen(
     }
 }
 
+/** Monogram colors for catalog cards, so each library is recognizable at a glance. */
+private val MonogramColors = listOf(
+    Color(0xFF1E3A34), Color(0xFF8C3B2A), Color(0xFF1F3550), Color(0xFF5B2333), Color(0xFF7A4A1E), Color(0xFF4A3B5C),
+)
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun CatalogList(catalogs: List<CatalogLink>, onOpen: (CatalogLink) -> Unit, onRemove: (CatalogLink) -> Unit) {
-    LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {
-        items(catalogs, key = { it.url + it.id }) { catalog ->
-            Row(
-                Modifier
+fun CatalogList(
+    catalogs: List<CatalogLink>,
+    onOpen: (CatalogLink) -> Unit,
+    onRemove: (CatalogLink) -> Unit,
+    onAdd: () -> Unit,
+) {
+    LazyColumn(
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        item {
+            Column(Modifier.statusBarsPadding().padding(top = 16.dp, bottom = 8.dp)) {
+                Text("Библиотеки", style = MaterialTheme.typography.headlineMedium)
+                Text(
+                    "Листайте каталоги и скачивайте книги прямо на полку",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        itemsIndexed(catalogs, key = { _, it -> it.url + it.id }) { index, catalog ->
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier
                     .fillMaxWidth()
+                    .clip(MaterialTheme.shapes.medium)
                     .combinedClickable(
                         onClick = { onOpen(catalog) },
                         onLongClick = { if (catalog.id != null) onRemove(catalog) },
-                    )
-                    .padding(horizontal = 20.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    ),
             ) {
-                Icon(Icons.Default.Public, null, tint = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.width(16.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(catalog.title, style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        catalog.url,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier
+                            .size(48.dp)
+                            .background(MonogramColors[index % MonogramColors.size], RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            catalog.title.take(1).uppercase(),
+                            color = Color(0xFFF3E3C3),
+                            style = MaterialTheme.typography.headlineSmall,
+                        )
+                    }
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(catalog.title, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            OpdsPresets.description(catalog.url) ?: catalog.url,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null)
+            }
+        }
+        item {
+            OutlinedButton(onClick = onAdd, modifier = Modifier.fillMaxWidth().height(52.dp), shape = MaterialTheme.shapes.medium) {
+                Icon(Icons.Default.Add, null)
+                Spacer(Modifier.width(8.dp))
+                Text("Добавить свой каталог")
             }
         }
         item {
             Text(
-                "Каталоги в формате OPDS есть у многих библиотек. Добавьте свой кнопкой «+», убрать добавленный можно долгим нажатием.",
+                "Подойдёт любой каталог в формате OPDS. Свой каталог убирается долгим нажатием.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(20.dp),
+                modifier = Modifier.padding(horizontal = 4.dp),
             )
         }
     }
@@ -223,11 +284,11 @@ private fun FeedView(
             // Catalogs repeat entries across pages, so ids are not safe as keys.
             items(page.entries) { entry ->
                 if (entry.isBook) {
-                    BookEntry(entry, downloads, onDownload, onRead)
+                    CatalogBook(entry, downloads, onDownload, onRead)
                 } else {
                     NavigationEntry(entry) { onOpen(entry) }
                 }
-                HorizontalDivider()
+                HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.outlineVariant)
             }
             if (page.nextUrl != null) {
                 item(key = "more") {
@@ -243,15 +304,22 @@ private fun FeedView(
 @Composable
 private fun SearchField(onSearch: (String) -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
-    OutlinedTextField(
+    TextField(
         value = query,
         onValueChange = { query = it },
-        placeholder = { Text("Название или автор") },
+        placeholder = { Text("Искать в этой библиотеке") },
         leadingIcon = { Icon(Icons.Default.Search, null) },
         singleLine = true,
+        shape = CircleShape,
+        colors = TextFieldDefaults.colors(
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { onSearch(query) }),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
     )
 }
 
@@ -277,72 +345,6 @@ private fun NavigationEntry(entry: OpdsEntry, onClick: () -> Unit) {
             }
         }
         if (entry.navigationUrl != null) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null)
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun BookEntry(
-    entry: OpdsEntry,
-    downloads: Map<String, DownloadState>,
-    onDownload: (OpdsEntry, app.koreshok.core.opds.OpdsDownload) -> Unit,
-    onRead: (String) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
-        val shape = RoundedCornerShape(4.dp)
-        Box(
-            Modifier
-                .size(width = 64.dp, height = 96.dp)
-                .clip(shape)
-                .background(MaterialTheme.colorScheme.secondaryContainer),
-        ) {
-            entry.coverUrl?.let { url ->
-                AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            }
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(entry.title, style = MaterialTheme.typography.titleSmall)
-            if (entry.authors.isNotEmpty()) {
-                Text(
-                    entry.authors.joinToString(", "),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            entry.summary?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = if (expanded) Int.MAX_VALUE else 3,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 4.dp).clickable { expanded = !expanded },
-                )
-            }
-            Spacer(Modifier.height(6.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                entry.downloads.forEach { file ->
-                    when (val state = downloads[file.url]) {
-                        is DownloadState.Running -> AssistChip(
-                            onClick = {},
-                            label = { Text("${file.label} ${(state.progress * 100).toInt()}%") },
-                            leadingIcon = { CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp) },
-                        )
-                        is DownloadState.Done -> AssistChip(
-                            onClick = { state.bookUri?.let(onRead) },
-                            label = { Text(if (state.bookUri != null) "Читать ${file.label}" else "${file.label} скачан") },
-                            leadingIcon = { Icon(Icons.Default.Check, null, Modifier.size(16.dp)) },
-                        )
-                        is DownloadState.Failed -> AssistChip(
-                            onClick = { onDownload(entry, file) },
-                            label = { Text("${file.label}: ошибка, ещё раз") },
-                        )
-                        null -> AssistChip(onClick = { onDownload(entry, file) }, label = { Text(file.label) })
-                    }
-                }
-            }
-        }
     }
 }
 

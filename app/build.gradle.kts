@@ -3,6 +3,8 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+    // Screenshot tests: CI renders the main screens on the JVM so the design can be checked without a phone.
+    alias(libs.plugins.paparazzi)
 }
 
 // CI passes the run number, so every published build has a higher version than the last.
@@ -81,4 +83,6 @@ dependencies {
     implementation(libs.androidx.documentfile)
     implementation(libs.coil.compose)
     implementation(libs.kotlinx.coroutines.core)
+
+    testImplementation(libs.junit)
 }

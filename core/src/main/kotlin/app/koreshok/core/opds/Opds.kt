@@ -82,15 +82,22 @@ object OpdsParser {
             title = feed.child("title")?.text.orEmpty(),
             entries = feed.children("entry").map { entry(it, baseUrl) },
             nextUrl = links.firstOrNull { it.attr("rel") == "next" }?.attr("href")?.let { resolve(baseUrl, it) },
-            searchTemplate = links.firstOrNull {
-                it.attr("rel") == "search" && it.attr("type").orEmpty().contains("atom") &&
-                    it.attr("href").orEmpty().contains("{searchTerms}")
-            }?.attr("href")?.let { resolve(baseUrl, it) },
+            searchTemplate = searchLinks(links, baseUrl).firstOrNull { it.contains("{searchTerms}") },
             openSearchUrl = links.firstOrNull {
                 it.attr("rel") == "search" && it.attr("type").orEmpty().contains("opensearchdescription")
             }?.attr("href")?.let { resolve(baseUrl, it) },
         )
     }
+
+    /**
+     * Search links that are ready templates. Atom ones come first; Либрусек labels its template
+     * as an OpenSearch description, so any search link with {searchTerms} counts.
+     */
+    private fun searchLinks(links: List<Element>, baseUrl: String): List<String> = links
+        .filter { it.attr("rel") == "search" }
+        .sortedBy { if (it.attr("type").orEmpty().contains("atom")) 0 else 1 }
+        .mapNotNull { it.attr("href") }
+        .map { resolve(baseUrl, it) }
 
     /** Reads the Atom search template out of an OpenSearch description document. */
     fun searchTemplate(openSearch: ByteArray, baseUrl: String): String? {
@@ -155,10 +162,15 @@ object OpdsParser {
 
 /** Catalogs offered out of the box. */
 object OpdsPresets {
-    data class Preset(val title: String, val url: String)
+    data class Preset(val title: String, val url: String, val description: String)
 
     val all = listOf(
-        Preset("Флибуста", "http://flibusta.is/opds"),
-        Preset("Project Gutenberg", "https://m.gutenberg.org/ebooks.opds/"),
+        Preset("Флибуста", "http://flibusta.is/opds", "Самая большая русская библиотека: художественная и не только"),
+        Preset("Либрусек", "http://lib.rus.ec/opds", "Старейшая русская библиотека, много редкого"),
+        Preset("Coollib", "https://coollib.net/opds", "Русские книги, удобные подборки по сериям"),
+        Preset("Мир фантастики", "https://www.fantasy-worlds.org/opds/", "Фантастика и фэнтези, авторы и циклы"),
+        Preset("Project Gutenberg", "https://m.gutenberg.org/ebooks.opds/", "70 000 классических книг на английском и других языках"),
     )
+
+    fun description(url: String): String? = all.firstOrNull { it.url == url }?.description
 }

@@ -13,7 +13,6 @@ import app.koreshok.core.opds.OpdsParser
 import app.koreshok.core.opds.OpdsPresets
 import app.koreshok.data.AppDatabase
 import app.koreshok.data.CatalogEntity
-import app.koreshok.data.LibraryRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -37,15 +36,9 @@ data class FeedPage(
     val error: String? = null,
 )
 
-sealed interface DownloadState {
-    data class Running(val progress: Float) : DownloadState
-    data class Done(val bookUri: String?) : DownloadState
-    data class Failed(val message: String) : DownloadState
-}
-
 class CatalogViewModel(
     private val db: AppDatabase,
-    private val library: LibraryRepository,
+    private val service: CatalogService,
 ) : ViewModel() {
 
     val catalogs: StateFlow<List<CatalogLink>> = db.catalogs().observeAll()
@@ -58,9 +51,7 @@ class CatalogViewModel(
     private val _stack = MutableStateFlow<List<FeedPage>>(emptyList())
     val stack: StateFlow<List<FeedPage>> = _stack.asStateFlow()
 
-    /** Keyed by download URL. */
-    private val _downloads = MutableStateFlow<Map<String, DownloadState>>(emptyMap())
-    val downloads: StateFlow<Map<String, DownloadState>> = _downloads.asStateFlow()
+    val downloads: StateFlow<Map<String, DownloadState>> = service.downloads
 
     private var loadJob: Job? = null
 
@@ -136,39 +127,9 @@ class CatalogViewModel(
         }
     }
 
-    private suspend fun fetchFeed(url: String): OpdsFeed {
-        val (bytes, finalUrl) = OpdsClient.fetch(url)
-        val feed = OpdsParser.parse(bytes, finalUrl)
-        if (feed.searchTemplate != null) return feed
-        val openSearch = feed.openSearchUrl ?: return feed
-        val template = runCatching {
-            val (description, descriptionUrl) = OpdsClient.fetch(openSearch)
-            OpdsParser.searchTemplate(description, descriptionUrl)
-        }.getOrNull()
-        return feed.copy(searchTemplate = template)
-    }
+    private suspend fun fetchFeed(url: String): OpdsFeed = service.fetchFeed(url)
 
-    fun download(entry: OpdsEntry, file: OpdsDownload) {
-        val key = file.url
-        if (_downloads.value[key] is DownloadState.Running) return
-        setDownload(key, DownloadState.Running(0f))
-        viewModelScope.launch {
-            try {
-                val author = entry.authors.firstOrNull()?.let { "$it - " }.orEmpty()
-                val saved = OpdsClient.download(file.url, library.downloadsDir, "$author${entry.title}.${file.extension}") {
-                    setDownload(key, DownloadState.Running(it))
-                }
-                val book = library.importDownloaded(saved)
-                setDownload(key, DownloadState.Done(book?.uri))
-            } catch (e: Exception) {
-                setDownload(key, DownloadState.Failed(e.message ?: "ошибка"))
-            }
-        }
-    }
-
-    private fun setDownload(key: String, state: DownloadState) {
-        _downloads.value = _downloads.value + (key to state)
-    }
+    fun download(entry: OpdsEntry, file: OpdsDownload) = service.download(entry, file)
 
     fun addCatalog(title: String, url: String) = viewModelScope.launch {
         val clean = url.trim().let { if (it.startsWith("http")) it else "https://$it" }
@@ -181,7 +142,7 @@ class CatalogViewModel(
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as KoreshokApp
-                CatalogViewModel(app.database, app.library)
+                CatalogViewModel(app.database, app.catalogs)
             }
         }
     }
