@@ -68,6 +68,18 @@ class LibraryRepository(
 
     suspend fun deleteAnnotation(id: Long) = db.annotations().delete(id)
 
+    /** Folder for books downloaded from catalogs; visible on a computer under Android/data. */
+    val downloadsDir: File
+        get() = (context.getExternalFilesDir("books") ?: File(context.filesDir, "books")).apply { mkdirs() }
+
+    /** Adds a downloaded file to the library and returns its entry. */
+    suspend fun importDownloaded(file: File): BookEntity? = withContext(Dispatchers.IO) {
+        val format = BookFormat.fromFileName(file.name) ?: return@withContext null
+        val document = DocumentFile.fromFile(file)
+        runCatching { index(DOWNLOADS, document, format) }
+        db.books().get(document.uri.toString())
+    }
+
     suspend fun rescanAll() {
         for (folder in db.folders().all()) rescan(folder.uri)
     }
@@ -169,7 +181,10 @@ class LibraryRepository(
         return file.absolutePath
     }
 
-    private companion object {
-        const val MAX_PARSE_BYTES = 100L * 1024 * 1024
+    companion object {
+        private const val MAX_PARSE_BYTES = 100L * 1024 * 1024
+
+        /** Pseudo folder for catalog downloads; never rescanned, so its books stay put. */
+        const val DOWNLOADS = "koreshok:downloads"
     }
 }

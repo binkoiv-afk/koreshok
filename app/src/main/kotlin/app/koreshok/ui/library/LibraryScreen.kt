@@ -4,6 +4,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.content.Intent
 import android.net.Uri
+import androidx.core.content.FileProvider
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.ViewModule
@@ -87,6 +89,7 @@ import java.io.File
 @Composable
 fun LibraryScreen(
     onRead: (uri: String) -> Unit,
+    onCatalogs: () -> Unit,
     viewModel: LibraryViewModel = viewModel(factory = LibraryViewModel.Factory),
 ) {
     val context = LocalContext.current
@@ -95,8 +98,15 @@ fun LibraryScreen(
             onRead(book.uri)
         } else {
             // Until their engines land, other formats open in whatever app the phone has for them.
+            val parsed = Uri.parse(book.uri)
+            // Downloaded books are plain files; other apps can only read them through the FileProvider.
+            val shared = if (parsed.scheme == "file") {
+                FileProvider.getUriForFile(context, "${context.packageName}.files", File(parsed.path.orEmpty()))
+            } else {
+                parsed
+            }
             val intent = Intent(Intent.ACTION_VIEW)
-                .setData(Uri.parse(book.uri))
+                .setData(shared)
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             runCatching { context.startActivity(Intent.createChooser(intent, book.title)) }
         }
@@ -144,6 +154,7 @@ fun LibraryScreen(
                     }) {
                         Icon(if (searching) Icons.Default.Close else Icons.Default.Search, "Поиск")
                     }
+                    IconButton(onClick = onCatalogs) { Icon(Icons.Default.Public, "Каталоги") }
                     SortMenu(state.prefs.sort, state.prefs.descending, viewModel::setSort)
                     GroupMenu(state.prefs.groupBy, viewModel::setGroupBy)
                     IconButton(onClick = { showFolders = true }) {

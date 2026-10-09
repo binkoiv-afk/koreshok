@@ -59,3 +59,15 @@ interface AnnotationDao {
     @Query("DELETE FROM annotations WHERE id = :id")
     suspend fun delete(id: Long)
 }
+
+@Dao
+interface CatalogDao {
+    @Query("SELECT * FROM catalogs ORDER BY addedAt")
+    fun observeAll(): Flow<List<CatalogEntity>>
+
+    @Insert
+    suspend fun insert(catalog: CatalogEntity)
+
+    @Query("DELETE FROM catalogs WHERE id = :id")
+    suspend fun delete(id: Long)
+}

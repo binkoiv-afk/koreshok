@@ -8,18 +8,29 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [BookEntity::class, FolderEntity::class, AnnotationEntity::class], version = 2)
+@Database(entities = [BookEntity::class, FolderEntity::class, AnnotationEntity::class, CatalogEntity::class], version = 3)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun books(): BookDao
     abstract fun folders(): FolderDao
     abstract fun annotations(): AnnotationDao
+    abstract fun catalogs(): CatalogDao
 
     companion object {
         fun create(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "library.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
+
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `catalogs` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `title` TEXT NOT NULL, " +
+                        "`url` TEXT NOT NULL, `addedAt` INTEGER NOT NULL)",
+                )
+            }
+        }
 
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {

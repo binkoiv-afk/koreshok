@@ -96,7 +96,7 @@ internal fun readZipEntry(zip: ByteArray, path: String, maxBytes: Int = 32 * 102
 }
 
 /** Reads the whole stream, or returns null once it exceeds [maxBytes]. Avoids readNBytes, which needs API 33. */
-internal fun java.io.InputStream.readAtMost(maxBytes: Int): ByteArray? {
+fun java.io.InputStream.readAtMost(maxBytes: Int): ByteArray? {
     val out = java.io.ByteArrayOutputStream()
     val buffer = ByteArray(64 * 1024)
     while (true) {

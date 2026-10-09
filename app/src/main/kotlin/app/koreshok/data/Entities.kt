@@ -68,3 +68,12 @@ data class AnnotationEntity(
     val chapterTitle: String?,
     val createdAt: Long,
 )
+
+/** An OPDS catalog the user added; built-in ones live in OpdsPresets. */
+@Entity(tableName = "catalogs")
+data class CatalogEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val title: String,
+    val url: String,
+    val addedAt: Long,
+)
