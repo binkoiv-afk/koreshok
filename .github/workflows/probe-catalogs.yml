@@ -8,6 +8,10 @@ on:
       urls:
         description: Space-separated catalog URLs
         required: true
+      bytes:
+        description: How much of each answer to keep
+        required: false
+        default: "3000"
 
 permissions:
   contents: write
@@ -19,12 +23,13 @@ jobs:
       - name: Fetch
         env:
           URLS: ${{ inputs.urls }}
+          BYTES: ${{ inputs.bytes }}
         run: |
           set +e
           for u in $URLS; do
             echo "=================== $u"
             curl -sS -L -m 20 -A "Koreshok/0.1 (Android)" -o body -w "HTTP %{http_code} %{content_type} -> %{url_effective}\n" "$u" 2>&1 || true
-            head -c 3000 body 2>/dev/null; echo
+            head -c "${BYTES:-3000}" body 2>/dev/null; echo
             rm -f body
           done > report.txt
       - name: Publish report

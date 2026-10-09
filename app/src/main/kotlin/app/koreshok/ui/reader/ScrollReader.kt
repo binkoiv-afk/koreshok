@@ -56,7 +56,8 @@ internal fun ScrollReader(
     layout: LayoutSpec,
     marginPx: Int,
     annotations: List<AnnotationEntity>,
-    viewModel: ReaderViewModel,
+    onPositionShown: (Position) -> Unit,
+    onToggleBookmark: (Position, Position) -> Unit,
     onLink: LinkHandler,
     onCenterTap: () -> Unit,
     onHighlight: (HighlightDraft) -> Unit,
@@ -90,7 +91,7 @@ internal fun ScrollReader(
         snapshotFlow { listState.firstVisibleItemIndex }
             .distinctUntilChanged()
             .debounce(300)
-            .collect { viewModel.onPageShown(positionOf(it)) }
+            .collect { onPositionShown(positionOf(it)) }
     }
 
     val current by remember { derivedStateOf { positionOf(listState.firstVisibleItemIndex) } }
@@ -114,7 +115,7 @@ internal fun ScrollReader(
             theme = theme,
             height = 28.dp,
             bookmarked = bookmarked,
-            onBookmark = { viewModel.toggleBookmark(current, next) },
+            onBookmark = { onToggleBookmark(current, next) },
         )
         Box(
             Modifier
