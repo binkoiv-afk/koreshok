@@ -1,12 +1,16 @@
 name: Probe catalogs
 
-# Manual check that the built-in OPDS catalogs answer, and what their search links look like.
+# Manual check that OPDS catalogs answer, and what their search links look like.
+# The report is attached to the "probe" pre-release, since job logs are not always reachable.
 on:
   workflow_dispatch:
     inputs:
       urls:
         description: Space-separated catalog URLs
         required: true
+
+permissions:
+  contents: write
 
 jobs:
   probe:
@@ -18,8 +22,14 @@ jobs:
         run: |
           for u in $URLS; do
             echo "=================== $u"
-            curl -sS -L -m 20 -A "Koreshok/0.1 (Android)" -o body -w "HTTP %{http_code} %{content_type} -> %{url_effective}\n" "$u" || true
-            head -c 2500 body 2>/dev/null; echo
-            grep -o '<link[^>]*search[^>]*>' body 2>/dev/null | head -5
+            curl -sS -L -m 20 -A "Koreshok/0.1 (Android)" -o body -w "HTTP %{http_code} %{content_type} -> %{url_effective}\n" "$u" 2>&1 || true
+            head -c 3000 body 2>/dev/null; echo
             rm -f body
-          done
+          done > report.txt
+      - name: Publish report
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view probe -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create probe -R "$GITHUB_REPOSITORY" --prerelease --latest=false --title "Служебное" --notes "Служебные отчёты сборки, не для установки."
+          gh release upload probe report.txt -R "$GITHUB_REPOSITORY" --clobber

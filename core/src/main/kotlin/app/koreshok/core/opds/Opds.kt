@@ -102,7 +102,7 @@ object OpdsParser {
 
     fun searchUrl(template: String, query: String): String =
         template.replace("{searchTerms}", URLEncoder.encode(query.trim(), "UTF-8"))
-            .replace(Regex("\\{[^}]*\\?}"), "")
+            .replace(Regex("\\{[^}]*\\?\\}"), "")
 
     private fun entry(entry: Element, baseUrl: String): OpdsEntry {
         val links = entry.children("link")
