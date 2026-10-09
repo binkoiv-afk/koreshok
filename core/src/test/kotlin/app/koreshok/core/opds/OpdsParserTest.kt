@@ -72,4 +72,17 @@ class OpdsParserTest {
         val template = OpdsParser.searchTemplate(description, "https://example.org/opds/")!!
         assertEquals("https://example.org/opds/search/war+and+peace/", OpdsParser.searchUrl(template, "war and peace"))
     }
+
+    @Test
+    fun acceptsTemplateInOpenSearchTypedLink() {
+        // Либрусек puts a ready template in a link typed as an OpenSearch description.
+        val feed = """
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <title>Либрусек</title>
+              <link href="http://lib.rus.ec/searchopds?ask={searchTerms}" rel="search" type="application/opensearchdescription+xml;profile=opds-catalog"/>
+            </feed>
+        """.trimIndent().toByteArray()
+        val parsed = OpdsParser.parse(feed, "http://lib.rus.ec/opds")
+        assertEquals("http://lib.rus.ec/searchopds?ask=%D0%BC%D0%B0%D1%81%D1%82%D0%B5%D1%80", OpdsParser.searchUrl(parsed.searchTemplate!!, "мастер"))
+    }
 }

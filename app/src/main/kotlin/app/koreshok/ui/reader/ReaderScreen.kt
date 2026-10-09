@@ -200,35 +200,49 @@ private fun Reader(ready: ReaderState.Ready, prefs: ReaderPrefs, viewModel: Read
                 prefs = prefs,
                 language = ready.language,
             )
-            val measurer = rememberTextMeasurer(cacheSize = 0)
-            val paginator = remember(measurer) { Paginator(measurer) }
-            val chapter = location.position.chapter
-            val pages by produceState<List<Page>?>(null, document, chapter, layout) {
-                value = null
-                value = withContext(Dispatchers.Default) { paginator.paginate(document, chapter, layout) }
-            }
-
-            // Right after a chapter change the previous chapter's pages are still around for a frame.
-            val current = pages?.takeIf { it.first().start.chapter == chapter }
-            if (current == null) {
-                CircularProgressIndicator(Modifier.align(Alignment.Center), color = theme.accent)
+            if (prefs.scroll) {
+                ScrollReader(
+                    document = document,
+                    location = location,
+                    layout = layout,
+                    marginPx = marginPx,
+                    annotations = annotations,
+                    viewModel = viewModel,
+                    onLink = onLink,
+                    onCenterTap = { showMenu = !showMenu },
+                    onHighlight = { highlight = it },
+                )
             } else {
-                key(chapter, location.jump, layout) {
-                    ChapterPager(
-                        document = document,
-                        pages = current,
-                        chapter = chapter,
-                        location = location,
-                        layout = layout,
-                        marginPx = marginPx,
-                        headerPx = headerPx,
-                        footerPx = footerPx,
-                        annotations = annotations,
-                        viewModel = viewModel,
-                        onLink = onLink,
-                        onCenterTap = { showMenu = !showMenu },
-                        onHighlight = { highlight = it },
-                    )
+                val measurer = rememberTextMeasurer(cacheSize = 0)
+                val paginator = remember(measurer) { Paginator(measurer) }
+                val chapter = location.position.chapter
+                val pages by produceState<List<Page>?>(null, document, chapter, layout) {
+                    value = null
+                    value = withContext(Dispatchers.Default) { paginator.paginate(document, chapter, layout) }
+                }
+
+                // Right after a chapter change the previous chapter's pages are still around for a frame.
+                val current = pages?.takeIf { it.first().start.chapter == chapter }
+                if (current == null) {
+                    CircularProgressIndicator(Modifier.align(Alignment.Center), color = theme.accent)
+                } else {
+                    key(chapter, location.jump, layout) {
+                        ChapterPager(
+                            document = document,
+                            pages = current,
+                            chapter = chapter,
+                            location = location,
+                            layout = layout,
+                            marginPx = marginPx,
+                            headerPx = headerPx,
+                            footerPx = footerPx,
+                            annotations = annotations,
+                            viewModel = viewModel,
+                            onLink = onLink,
+                            onCenterTap = { showMenu = !showMenu },
+                            onHighlight = { highlight = it },
+                        )
+                    }
                 }
             }
         }
@@ -324,7 +338,12 @@ private fun Reader(ready: ReaderState.Ready, prefs: ReaderPrefs, viewModel: Read
 
 @Composable
 private fun Header(title: String, theme: ReaderTheme, heightPx: Int, bookmarked: Boolean, onBookmark: () -> Unit) {
-    val height = with(LocalDensity.current) { heightPx.toDp() }
+    ReaderHeader(title, theme, with(LocalDensity.current) { heightPx.toDp() }, bookmarked, onBookmark)
+}
+
+/** Chapter title over the text, and the page corner that holds the bookmark. */
+@Composable
+internal fun ReaderHeader(title: String, theme: ReaderTheme, height: androidx.compose.ui.unit.Dp, bookmarked: Boolean, onBookmark: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().height(height).padding(start = 24.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -737,95 +756,6 @@ private fun TocSheet(document: Document, position: Position, onSelect: (Position
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun ReaderSettingsPanel(prefs: ReaderPrefs, update: ((ReaderPrefs) -> ReaderPrefs) -> Unit) {
-    Column(
-        Modifier
-            .padding(horizontal = 20.dp)
-            .padding(bottom = 24.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text("Оформление", style = MaterialTheme.typography.titleLarge)
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ReaderTheme.entries.forEach { theme ->
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(
-                        Modifier
-                            .size(48.dp)
-                            .background(theme.background, CircleShape)
-                            .border(
-                                width = if (theme == prefs.theme) 3.dp else 1.dp,
-                                color = if (theme == prefs.theme) MaterialTheme.colorScheme.primary else theme.secondary,
-                                shape = CircleShape,
-                            )
-                            .clickable { update { it.copy(theme = theme) } },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("Аа", color = theme.text)
-                    }
-                    Text(theme.label, style = MaterialTheme.typography.labelSmall)
-                }
-            }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ReaderFont.entries.forEach { font ->
-                FilterChip(
-                    selected = font == prefs.font,
-                    onClick = { update { it.copy(font = font) } },
-                    label = { Text(font.label) },
-                )
-            }
-        }
-        LabeledSlider("Размер шрифта", "${prefs.fontSize.roundToInt()}", prefs.fontSize, 12f..36f, 23) { v ->
-            update { it.copy(fontSize = v) }
-        }
-        LabeledSlider("Межстрочный интервал", "%.2f".format(prefs.lineHeight), prefs.lineHeight, 1.1f..2.2f, 21) { v ->
-            update { it.copy(lineHeight = v) }
-        }
-        LabeledSlider("Поля", "${prefs.margin.roundToInt()}", prefs.margin, 4f..48f, 21) { v ->
-            update { it.copy(margin = v) }
-        }
-        SwitchRow("Выравнивание по ширине", prefs.justify) { v -> update { it.copy(justify = v) } }
-        SwitchRow("Переносы слов", prefs.hyphenate) { v -> update { it.copy(hyphenate = v) } }
-        SwitchRow("Красная строка", prefs.indent) { v -> update { it.copy(indent = v) } }
-    }
-}
-
-@Composable
-private fun LabeledSlider(
-    label: String,
-    value: String,
-    current: Float,
-    range: ClosedFloatingPointRange<Float>,
-    steps: Int,
-    onChange: (Float) -> Unit,
-) {
-    // Layout reruns on every saved change, so the slider only commits when released.
-    var local by remember(current) { mutableFloatStateOf(current) }
-    Column {
-        Row {
-            Text(label, modifier = Modifier.weight(1f))
-            Text(if (local == current) value else "…", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Slider(
-            value = local,
-            onValueChange = { local = it },
-            onValueChangeFinished = { onChange(local) },
-            valueRange = range,
-            steps = steps,
-        )
-    }
-}
-
-@Composable
-private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(label, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onChange)
     }
 }
 

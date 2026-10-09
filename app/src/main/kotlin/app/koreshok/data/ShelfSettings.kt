@@ -14,6 +14,8 @@ data class ShelfPrefs(
     val sort: SortOrder = SortOrder.AUTHOR,
     val descending: Boolean = false,
     val groupBy: GroupBy = GroupBy.NONE,
+    /** Rows with details instead of a grid of covers. */
+    val list: Boolean = false,
 )
 
 private val Context.dataStore by preferencesDataStore("shelf")
@@ -22,16 +24,19 @@ class ShelfSettings(private val context: Context) {
     private val sortKey = stringPreferencesKey("sort")
     private val descendingKey = booleanPreferencesKey("descending")
     private val groupKey = stringPreferencesKey("group")
+    private val listKey = booleanPreferencesKey("list")
 
     val prefs: Flow<ShelfPrefs> = context.dataStore.data.map { p ->
         ShelfPrefs(
             sort = p[sortKey]?.let { runCatching { SortOrder.valueOf(it) }.getOrNull() } ?: SortOrder.AUTHOR,
             descending = p[descendingKey] ?: false,
             groupBy = p[groupKey]?.let { runCatching { GroupBy.valueOf(it) }.getOrNull() } ?: GroupBy.NONE,
+            list = p[listKey] ?: false,
         )
     }
 
     suspend fun setSort(sort: SortOrder) = context.dataStore.edit { it[sortKey] = sort.name }
     suspend fun setDescending(value: Boolean) = context.dataStore.edit { it[descendingKey] = value }
     suspend fun setGroupBy(groupBy: GroupBy) = context.dataStore.edit { it[groupKey] = groupBy.name }
+    suspend fun setList(value: Boolean) = context.dataStore.edit { it[listKey] = value }
 }

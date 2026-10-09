@@ -4,6 +4,7 @@ import android.app.Application
 import app.koreshok.data.AppDatabase
 import app.koreshok.data.LibraryRepository
 import app.koreshok.data.ShelfSettings
+import app.koreshok.ui.catalog.CatalogService
 import app.koreshok.ui.reader.ReaderSettings
 
 class KoreshokApp : Application() {
@@ -11,4 +12,5 @@ class KoreshokApp : Application() {
     val library by lazy { LibraryRepository(this, database) }
     val shelfSettings by lazy { ShelfSettings(this) }
     val readerSettings by lazy { ReaderSettings(this) }
+    val catalogs by lazy { CatalogService(library) }
 }

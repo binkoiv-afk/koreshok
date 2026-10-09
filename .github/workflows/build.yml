@@ -40,10 +40,42 @@ jobs:
           git commit -m "Add release signing key"
           git push
       - name: Test and build
-        run: ./gradlew :core:test :app:assembleRelease
+        run: |
+          set -o pipefail
+          ./gradlew :core:test :app:assembleRelease 2>&1 | tee build.log
         env:
           VERSION_CODE: ${{ github.run_number }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      # Pictures of the main screens, rendered on the JVM; attached to the service pre-release.
+      - name: Screenshots
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ./gradlew :app:recordPaparazziDebug 2>&1 | tee screens.log
+      - name: Publish screenshots
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view probe >/dev/null 2>&1 || \
+            gh release create probe --prerelease --latest=false --title "Служебное" --notes "Служебные отчёты сборки, не для установки."
+          mkdir -p screens
+          for f in app/src/test/snapshots/images/*.png; do
+            name=$(basename "$f" | sed 's/^app.koreshok_ScreensTest_//')
+            cp "$f" "screens/$name"
+          done
+          gh release upload probe screens/*.png --clobber
+      # Job logs are not reachable from every environment, so a failed build leaves its log on the service pre-release.
+      - name: Publish build log on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view probe >/dev/null 2>&1 || \
+            gh release create probe --prerelease --latest=false --title "Служебное" --notes "Служебные отчёты сборки, не для установки."
+          touch build.log screens.log
+          cat build.log screens.log > build-log.txt
+          gh release upload probe build-log.txt --clobber
       - name: Name the APK
         run: cp app/build/outputs/apk/release/app-release.apk koreshok.apk
       - uses: actions/upload-artifact@v4
