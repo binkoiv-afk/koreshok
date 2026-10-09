@@ -22,6 +22,6 @@
 
 ## Сборка
 
-APK собирается в GitHub Actions (вкладка Actions → последний запуск → артефакт `koreshok-apk`).
+Свежий APK после каждого изменения: https://github.com/binkoiv-afk/koreshok/releases/latest/download/koreshok.apk
 
 Локально: `./gradlew :app:assembleRelease` (нужен Android SDK). Модуль `core` с разбором форматов и логикой полки — чистый Kotlin, тесты: `./gradlew :core:test`.
