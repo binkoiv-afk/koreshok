@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -41,7 +42,12 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -60,6 +66,14 @@ import app.koreshok.ui.catalog.CatalogBook
 import app.koreshok.ui.catalog.CatalogLink
 import app.koreshok.ui.catalog.DownloadState
 import app.koreshok.ui.components.BookCover
+import app.koreshok.ui.discover.CatalogBookSheet
+import app.koreshok.ui.discover.DiscoverActions
+import app.koreshok.ui.discover.DiscoverUi
+import app.koreshok.ui.discover.DiscoverViewModel
+import app.koreshok.ui.discover.FreshState
+import app.koreshok.ui.discover.RandomCatalogSheet
+import app.koreshok.ui.discover.TasteQuizSheet
+import app.koreshok.ui.discover.discoverItems
 import app.koreshok.ui.components.CoverCaption
 import app.koreshok.ui.library.openBook
 import app.koreshok.ui.theme.BookTitleStyle
@@ -73,8 +87,18 @@ fun SearchScreen(
     onRead: (String) -> Unit,
     onOpenFeed: (url: String, title: String) -> Unit,
     viewModel: SearchViewModel = viewModel(factory = SearchViewModel.Factory),
+    discover: DiscoverViewModel = viewModel(factory = DiscoverViewModel.Factory),
 ) {
     val context = LocalContext.current
+    val prefs by discover.prefs.collectAsStateWithLifecycle()
+    val rows by discover.rows.collectAsStateWithLifecycle()
+    val fresh by discover.fresh.collectAsStateWithLifecycle()
+    val shelfTaste by discover.shelfTaste.collectAsStateWithLifecycle()
+    val random by discover.random.collectAsStateWithLifecycle()
+    var quiz by rememberSaveable { mutableStateOf(false) }
+    var opened by remember { mutableStateOf<OpdsEntry?>(null) }
+    LaunchedEffect(fresh) { if (fresh is FreshState.Loaded) discover.markFreshSeen() }
+
     val query by viewModel.query.collectAsStateWithLifecycle()
     val submitted by viewModel.submitted.collectAsStateWithLifecycle()
     val catalogs by viewModel.catalogs.collectAsStateWithLifecycle()
@@ -97,7 +121,30 @@ fun SearchScreen(
         onDownload = viewModel::download,
         onRead = onRead,
         onOpenFeed = onOpenFeed,
+        discover = {
+            discoverItems(
+                DiscoverUi(prefs, rows, fresh),
+                DiscoverActions(
+                    onRandom = discover::pickRandom,
+                    onQuiz = { quiz = true },
+                    onDismissQuiz = discover::dismissQuiz,
+                    onBook = { opened = it },
+                    onRetry = discover::refresh,
+                ),
+            )
+        },
     )
+
+    val current = prefs
+    if (quiz && current != null) {
+        TasteQuizSheet(current, shelfTaste, onSave = discover::saveTaste, onDismiss = { quiz = false })
+    }
+    opened?.let { entry ->
+        CatalogBookSheet(entry, downloads, viewModel::download, onRead, onDismiss = { opened = null })
+    }
+    random?.let { pick ->
+        RandomCatalogSheet(pick, downloads, viewModel::download, onRead, onAnother = discover::pickRandom, onDismiss = discover::closeRandom)
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -117,17 +164,18 @@ fun SearchContent(
     onDownload: (OpdsEntry, OpdsDownload) -> Unit,
     onRead: (String) -> Unit,
     onOpenFeed: (String, String) -> Unit,
+    discover: LazyListScope.() -> Unit = { item(key = "hint") { SearchHint() } },
 ) {
     val focus = LocalFocusManager.current
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item(key = "header") {
             Column(Modifier.statusBarsPadding().padding(horizontal = 20.dp).padding(top = 16.dp)) {
-                Text("Поиск", style = MaterialTheme.typography.headlineMedium)
+                Text("Обзор", style = MaterialTheme.typography.headlineMedium)
                 Spacer(Modifier.height(12.dp))
                 TextField(
                     value = query,
                     onValueChange = onQuery,
-                    placeholder = { Text("Книга или автор") },
+                    placeholder = { Text("Найти книгу или автора") },
                     leadingIcon = { Icon(Icons.Default.Search, null) },
                     trailingIcon = {
                         if (query.isNotEmpty()) {
@@ -149,6 +197,7 @@ fun SearchContent(
                     }),
                     modifier = Modifier.fillMaxWidth(),
                 )
+                if (query.isNotBlank()) {
                 Spacer(Modifier.height(12.dp))
                 Text(
                     "Где искать",
@@ -166,11 +215,12 @@ fun SearchContent(
                         )
                     }
                 }
+                }
             }
         }
 
         if (query.isBlank()) {
-            item(key = "hint") { SearchHint() }
+            discover()
             return@LazyColumn
         }
 

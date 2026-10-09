@@ -48,6 +48,7 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.SystemUpdate
@@ -124,6 +125,8 @@ class ShelfActions(
     val onToggleList: () -> Unit = {},
     val onArrange: () -> Unit = {},
     val onUpdate: () -> Unit = {},
+    /** "Не знаете, что почитать?": a random unread book from the shelf. */
+    val onRandom: () -> Unit = {},
 )
 
 @Composable
@@ -275,6 +278,7 @@ private fun ShelfHeader(state: LibraryState, actions: ShelfActions, showTools: B
             }
         }
         if (showTools) {
+            IconButton(onClick = actions.onRandom) { Icon(Icons.Default.Casino, "Книга наугад") }
             IconButton(onClick = actions.onToggleList) {
                 if (state.prefs.list) {
                     Icon(Icons.Default.GridView, "Обложками")

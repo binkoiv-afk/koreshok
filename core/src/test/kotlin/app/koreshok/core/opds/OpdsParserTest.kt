@@ -24,6 +24,8 @@ class OpdsParserTest {
             <title>Пикник на обочине</title>
             <author><name>Стругацкий Аркадий</name></author>
             <author><name>Стругацкий Борис</name></author>
+            <category term="Научная фантастика" label="Научная фантастика"/>
+            <dc:issued>1972</dc:issued>
             <content type="text/html">Повесть &lt;br/&gt;о Зоне</content>
             <link href="/b/42/fb2" rel="http://opds-spec.org/acquisition/open-access" type="application/fb2+zip"/>
             <link href="/b/42/epub" rel="http://opds-spec.org/acquisition/open-access" type="application/epub+zip"/>
@@ -35,6 +37,13 @@ class OpdsParserTest {
     """.trimIndent().toByteArray()
 
     private val parsed = OpdsParser.parse(feed, "http://flibusta.is/opds/genre/12")
+
+    @Test
+    fun readsYearAndGenres() {
+        val book = parsed.entries[1]
+        assertEquals(1972, book.year)
+        assertEquals(listOf("Научная фантастика"), book.categories)
+    }
 
     @Test
     fun readsNavigationAndBooks() {

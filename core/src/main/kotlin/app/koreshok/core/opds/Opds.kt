@@ -29,8 +29,15 @@ data class OpdsEntry(
     /** Where tapping the entry leads when it is a folder of the catalog. */
     val navigationUrl: String?,
     val downloads: List<OpdsDownload>,
+    /** Year (or date) of publication, when the catalog gives one. */
+    val issued: String? = null,
+    /** Genre labels. */
+    val categories: List<String> = emptyList(),
 ) {
     val isBook: Boolean get() = downloads.isNotEmpty()
+
+    /** Publication year, if [issued] starts with one. */
+    val year: Int? get() = issued?.take(4)?.toIntOrNull()
 }
 
 data class OpdsDownload(val url: String, val mimeType: String) {
@@ -139,6 +146,8 @@ object OpdsParser {
             coverUrl = cover?.attr("href")?.let { resolve(baseUrl, it) },
             navigationUrl = if (downloads.isEmpty()) navigation?.attr("href")?.let { resolve(baseUrl, it) } else null,
             downloads = downloads,
+            issued = entry.child("issued")?.text?.trim()?.takeIf { it.isNotEmpty() },
+            categories = entry.children("category").mapNotNull { (it.attr("label") ?: it.attr("term"))?.takeIf { label -> label.isNotBlank() } },
         )
     }
 

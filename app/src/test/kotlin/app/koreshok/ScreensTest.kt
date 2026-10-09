@@ -28,6 +28,28 @@ import app.koreshok.ui.search.CatalogSearch
 import app.koreshok.ui.search.SearchContent
 import app.koreshok.ui.search.SearchSection
 import app.koreshok.ui.theme.KoreshokTheme
+import app.koreshok.core.document.BlockKind
+import app.koreshok.core.document.Chapter
+import app.koreshok.core.document.Document
+import app.koreshok.core.document.Position
+import app.koreshok.core.document.TextBlock
+import app.koreshok.data.FavoriteAuthor
+import app.koreshok.data.TastePrefs
+import app.koreshok.ui.discover.DiscoverActions
+import app.koreshok.ui.discover.DiscoverRow
+import app.koreshok.ui.discover.DiscoverUi
+import app.koreshok.ui.discover.FreshBook
+import app.koreshok.ui.discover.FreshState
+import app.koreshok.ui.discover.RowState
+import app.koreshok.ui.discover.ShelfRandom
+import app.koreshok.ui.discover.ShelfTaste
+import app.koreshok.ui.discover.TasteQuiz
+import app.koreshok.ui.discover.discoverItems
+import app.koreshok.ui.reader.LayoutSpec
+import app.koreshok.ui.reader.Location
+import app.koreshok.ui.reader.ReaderPrefs
+import app.koreshok.ui.reader.ReaderTheme
+import app.koreshok.ui.reader.ScrollReader
 import com.android.resources.NightMode
 import org.junit.Rule
 import org.junit.Test
@@ -93,6 +115,105 @@ class ScreensTest {
 
     @Test fun readerSettings() = snap("reader_settings") {
         app.koreshok.ui.reader.ReaderSettingsPanel(app.koreshok.ui.reader.ReaderPrefs()) {}
+    }
+
+    @Test fun discover() = snap("discover") { discoverPage() }
+
+    @Test fun discoverDark() = snap("discover_dark", dark = true) { discoverPage() }
+
+    @Test fun quizGenres() = snap("quiz_genres") {
+        TasteQuiz(TastePrefs(), ShelfTaste(listOf("Виктор Пелевин"), setOf("fantasy", "modern", "sf")), { _, _, _ -> })
+    }
+
+    @Test fun quizAuthors() = snap("quiz_authors") {
+        TasteQuiz(
+            TastePrefs(authors = listOf(FavoriteAuthor("Виктор Пелевин"), FavoriteAuthor("Людмила Улицкая"))),
+            ShelfTaste(listOf("Михаил Булгаков", "Станислав Лем", "Фрэнк Герберт", "Лев Толстой"), emptySet()),
+            { _, _, _ -> },
+            startStep = 1,
+        )
+    }
+
+    @Test fun shelfRandom() = snap("shelf_random") { ShelfRandom(books[0], {}, {}) }
+
+    @Test fun scrollReader() = snap("reader_scroll") { scrollPage(ReaderPrefs(scroll = true)) }
+
+    @Test fun scrollReaderSepia() = snap("reader_scroll_sepia") { scrollPage(ReaderPrefs(scroll = true, theme = ReaderTheme.SEPIA)) }
+
+    @Composable
+    private fun scrollPage(prefs: ReaderPrefs) {
+        val density = 2.625f
+        val margin = (prefs.margin * density).toInt()
+        val paragraphs = listOf(
+            "В час жаркого весеннего заката на Патриарших прудах появилось двое граждан. Первый из них, одетый в летнюю серенькую пару, был маленького роста, упитан, лыс, свою приличную шляпу пирожком нес в руке, а на хорошо выбритом лице его помещались сверхъестественных размеров очки в черной роговой оправе.",
+            "Второй — плечистый, рыжеватый, вихрастый молодой человек в заломленной на затылок клетчатой кепке — был в ковбойке, жеваных белых брюках и в черных тапочках.",
+            "Первый был не кто иной, как Михаил Александрович Берлиоз, председатель правления одной из крупнейших московских литературных ассоциаций, сокращенно именуемой МАССОЛИТ, и редактор толстого художественного журнала, а молодой спутник его — поэт Иван Николаевич Понырев, пишущий под псевдонимом Бездомный.",
+            "Попав в тень чуть зеленеющих лип, писатели первым долгом бросились к пестро раскрашенной будочке с надписью «Пиво и воды».",
+        )
+        val document = Document(
+            title = "Мастер и Маргарита",
+            chapters = listOf(
+                Chapter("Глава 1. Никогда не разговаривайте с неизвестными", listOf(TextBlock(BlockKind.HEADING, "Глава 1. Никогда не разговаривайте с неизвестными", level = 1)) + (paragraphs + paragraphs).map { TextBlock(BlockKind.PARAGRAPH, it) }),
+            ),
+            toc = emptyList(),
+            anchors = emptyMap(),
+            images = emptyMap(),
+        )
+        val layout = LayoutSpec(widthPx = 1080 - margin * 2, heightPx = 2200, density = density, prefs = prefs, language = "ru")
+        Box(Modifier.fillMaxSize().background(prefs.theme.background)) {
+            ScrollReader(
+                document = document,
+                location = Location(Position(0, 0)),
+                layout = layout,
+                marginPx = margin,
+                annotations = emptyList(),
+                onPositionShown = {},
+                onToggleBookmark = { _, _ -> },
+                onLink = { _, _ -> },
+                onCenterTap = {},
+                onHighlight = {},
+            )
+        }
+    }
+
+    @Composable
+    private fun discoverPage() {
+        val popular = listOf(
+            opds("Шантарам", "Робертс Грегори Дэвид", "Роман о беглеце в Бомбее."),
+            opds("Алхимик", "Коэльо Пауло", "Притча о пастухе и его мечте."),
+            opds("Маленькая жизнь", "Янагихара Ханья", "О дружбе длиной в жизнь."),
+            opds("Щегол", "Тартт Донна", "Мальчик, картина и потеря."),
+        )
+        val fantasy = listOf(
+            opds("Имя ветра", "Ротфусс Патрик", ""),
+            opds("Ведьмак. Последнее желание", "Сапковский Анджей", ""),
+            opds("Американские боги", "Гейман Нил", ""),
+            opds("Цвет волшебства", "Пратчетт Терри", ""),
+        )
+        SearchContent(
+            "", "", catalogs, emptySet(), emptyList(), emptyList(), emptyMap(), {}, {}, {}, {}, { _, _ -> }, {}, { _, _ -> },
+            discover = {
+                discoverItems(
+                    DiscoverUi(
+                        prefs = TastePrefs(asked = false),
+                        rows = listOf(
+                            DiscoverRow("new", "Новинки недели", "современная проза, фэнтези", RowState.Loading),
+                            DiscoverRow("modern", "Современная проза", "Популярное во Флибусте", RowState.Loaded(popular)),
+                            DiscoverRow("fantasy", "Фэнтези", "Популярное во Флибусте", RowState.Loaded(fantasy)),
+                        ),
+                        fresh = FreshState.Loaded(
+                            listOf(
+                                FreshBook(opds("Возвращение Синей Бороды", "Пелевин Виктор Олегович", "").copy(issued = "2026"), "Виктор Пелевин", isNew = true),
+                                FreshBook(opds("Круть", "Пелевин Виктор Олегович", "").copy(issued = "2025"), "Виктор Пелевин", isNew = false),
+                                FreshBook(opds("Сад", "Степнова Марина Львовна", "").copy(issued = "2025"), "Марина Степнова", isNew = false),
+                            ),
+                            missing = emptyList(),
+                        ),
+                    ),
+                    DiscoverActions(),
+                )
+            },
+        )
     }
 
     @Test fun libraries() = snap("libraries") { CatalogList(catalogs, {}, {}, {}) }
