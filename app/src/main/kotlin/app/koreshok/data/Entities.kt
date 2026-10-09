@@ -47,3 +47,24 @@ class Converters {
     @TypeConverter
     fun toList(value: String): List<String> = if (value.isEmpty()) emptyList() else value.split("\n")
 }
+
+enum class AnnotationKind { BOOKMARK, HIGHLIGHT }
+
+/** A bookmark (a point) or a highlight (a range inside one block), with an optional note. */
+@Entity(tableName = "annotations", indices = [Index("bookUri")])
+data class AnnotationEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val bookUri: String,
+    val kind: AnnotationKind,
+    val chapter: Int,
+    val block: Int,
+    val start: Int,
+    val end: Int,
+    /** Index into the highlight palette; ignored for bookmarks. */
+    val color: Int = 0,
+    val note: String? = null,
+    /** The quoted text, or the first words of the page for a bookmark. */
+    val text: String,
+    val chapterTitle: String?,
+    val createdAt: Long,
+)

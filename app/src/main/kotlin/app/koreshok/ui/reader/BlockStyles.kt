@@ -48,7 +48,13 @@ typealias LinkHandler = (target: String, isNote: Boolean) -> Unit
 
 object BlockStyles {
 
-    fun spec(block: Block, layout: LayoutSpec, onLink: LinkHandler?): TextBlockSpec? {
+    /** [highlights] only add backgrounds, so pages measured without them still line up. */
+    fun spec(
+        block: Block,
+        layout: LayoutSpec,
+        onLink: LinkHandler?,
+        highlights: List<Pair<IntRange, Color>> = emptyList(),
+    ): TextBlockSpec? {
         val textBlock = when (block) {
             is TextBlock -> block
             is SeparatorBlock -> TextBlock(BlockKind.SUBTITLE, "*  *  *")
@@ -122,7 +128,7 @@ object BlockStyles {
                 Pads(start = em(1.2f) * textBlock.level.coerceAtLeast(1), bottom = em(0.2f))
         }
         return TextBlockSpec(
-            text = annotate(textBlock, theme.accent, onLink),
+            text = annotate(textBlock, theme.accent, onLink, highlights),
             style = style,
             startPad = pads.start,
             endPad = pads.end,
@@ -140,8 +146,18 @@ object BlockStyles {
         else -> 1.08f
     }
 
-    fun annotate(block: TextBlock, accent: Color, onLink: LinkHandler?): AnnotatedString {
+    fun annotate(
+        block: TextBlock,
+        accent: Color,
+        onLink: LinkHandler?,
+        highlights: List<Pair<IntRange, Color>> = emptyList(),
+    ): AnnotatedString {
         val builder = AnnotatedString.Builder(block.text)
+        for ((range, color) in highlights) {
+            val start = range.first.coerceIn(0, block.text.length)
+            val end = (range.last + 1).coerceIn(start, block.text.length)
+            if (end > start) builder.addStyle(ComposeSpan(background = color), start, end)
+        }
         for (span in block.spans) {
             when (val style = span.style) {
                 BookSpan.Bold -> builder.addStyle(ComposeSpan(fontWeight = FontWeight.Bold), span.start, span.end)

@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
@@ -44,10 +45,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.Bookmarks
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.FormatSize
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -77,7 +86,14 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -95,6 +111,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.koreshok.core.document.Document
 import app.koreshok.core.document.ImageBlock
+import app.koreshok.core.document.TextBlock
+import app.koreshok.data.AnnotationEntity
+import app.koreshok.data.AnnotationKind
 import app.koreshok.core.document.Position
 import app.koreshok.core.document.noteBlocks
 import coil.compose.AsyncImage
@@ -138,11 +157,14 @@ private fun Reader(ready: ReaderState.Ready, prefs: ReaderPrefs, viewModel: Read
     val theme = prefs.theme
     val location by viewModel.location.collectAsStateWithLifecycle()
     val history by viewModel.history.collectAsStateWithLifecycle()
+    val annotations by viewModel.annotations.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var showMenu by remember { mutableStateOf(false) }
     var showToc by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showAnnotations by remember { mutableStateOf(false) }
     var note by remember { mutableStateOf<String?>(null) }
+    var highlight by remember { mutableStateOf<HighlightDraft?>(null) }
 
     ImmersiveMode(hideBars = !showMenu)
 
@@ -186,29 +208,27 @@ private fun Reader(ready: ReaderState.Ready, prefs: ReaderPrefs, viewModel: Read
                 value = withContext(Dispatchers.Default) { paginator.paginate(document, chapter, layout) }
             }
 
-            Column(Modifier.fillMaxSize()) {
-                Header(document.chapters[chapter].title ?: document.title, theme, headerPx)
-                Box(Modifier.weight(1f).fillMaxWidth()) {
-                    // Right after a chapter change the previous chapter's pages are still around for a frame.
-                    val current = pages?.takeIf { it.first().start.chapter == chapter }
-                    if (current == null) {
-                        CircularProgressIndicator(Modifier.align(Alignment.Center), color = theme.accent)
-                    } else {
-                        key(chapter, location.jump, layout) {
-                            ChapterPager(
-                                document = document,
-                                pages = current,
-                                chapter = chapter,
-                                location = location,
-                                layout = layout,
-                                marginPx = marginPx,
-                                viewModel = viewModel,
-                                onLink = onLink,
-                                onCenterTap = { showMenu = !showMenu },
-                                footerPx = footerPx,
-                            )
-                        }
-                    }
+            // Right after a chapter change the previous chapter's pages are still around for a frame.
+            val current = pages?.takeIf { it.first().start.chapter == chapter }
+            if (current == null) {
+                CircularProgressIndicator(Modifier.align(Alignment.Center), color = theme.accent)
+            } else {
+                key(chapter, location.jump, layout) {
+                    ChapterPager(
+                        document = document,
+                        pages = current,
+                        chapter = chapter,
+                        location = location,
+                        layout = layout,
+                        marginPx = marginPx,
+                        headerPx = headerPx,
+                        footerPx = footerPx,
+                        annotations = annotations,
+                        viewModel = viewModel,
+                        onLink = onLink,
+                        onCenterTap = { showMenu = !showMenu },
+                        onHighlight = { highlight = it },
+                    )
                 }
             }
         }
@@ -222,6 +242,7 @@ private fun Reader(ready: ReaderState.Ready, prefs: ReaderPrefs, viewModel: Read
             canGoBack = history.isNotEmpty(),
             onBack = onBack,
             onToc = { showToc = true },
+            onAnnotations = { showAnnotations = true },
             onSettings = { showSettings = true },
             onSeek = viewModel::seek,
             onPreviousChapter = { viewModel.previousChapter(toEnd = false) },
@@ -238,10 +259,45 @@ private fun Reader(ready: ReaderState.Ready, prefs: ReaderPrefs, viewModel: Read
             target?.let { viewModel.goTo(it) }
         }
     }
+    if (showAnnotations) {
+        AnnotationsSheet(
+            annotations = annotations,
+            onOpen = { item ->
+                showAnnotations = false
+                showMenu = false
+                viewModel.goTo(item.position())
+            },
+            onDelete = { viewModel.deleteAnnotation(it.id) },
+            onExport = {
+                val markdown = exportMarkdown(document.title, ready.authors, annotations)
+                val send = Intent(Intent.ACTION_SEND)
+                    .setType("text/markdown")
+                    .putExtra(Intent.EXTRA_SUBJECT, document.title)
+                    .putExtra(Intent.EXTRA_TEXT, markdown)
+                runCatching { context.startActivity(Intent.createChooser(send, "Экспорт заметок")) }
+            },
+            onDismiss = { showAnnotations = false },
+        )
+    }
     if (showSettings) {
         ModalBottomSheet(onDismissRequest = { showSettings = false }) {
             ReaderSettingsPanel(prefs) { transform -> viewModel.updatePrefs(transform) }
         }
+    }
+    highlight?.let { draft ->
+        HighlightSheet(
+            draft = draft,
+            document = document,
+            onSave = {
+                viewModel.saveHighlight(it)
+                highlight = null
+            },
+            onDelete = {
+                viewModel.deleteAnnotation(draft.id)
+                highlight = null
+            },
+            onDismiss = { highlight = null },
+        )
     }
     note?.let { target ->
         ModalBottomSheet(onDismissRequest = { note = null }) {
@@ -267,10 +323,58 @@ private fun Reader(ready: ReaderState.Ready, prefs: ReaderPrefs, viewModel: Read
 }
 
 @Composable
-private fun Header(title: String, theme: ReaderTheme, heightPx: Int) {
+private fun Header(title: String, theme: ReaderTheme, heightPx: Int, bookmarked: Boolean, onBookmark: () -> Unit) {
     val height = with(LocalDensity.current) { heightPx.toDp() }
-    Box(Modifier.fillMaxWidth().height(height).padding(horizontal = 24.dp), contentAlignment = Alignment.Center) {
-        Text(title, color = theme.secondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Row(
+        Modifier.fillMaxWidth().height(height).padding(start = 24.dp, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            title,
+            color = theme.secondary,
+            fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f).padding(start = 24.dp),
+            textAlign = TextAlign.Center,
+        )
+        // The page corner: one tap adds or removes a bookmark.
+        Box(
+            Modifier
+                .size(height + 8.dp, height)
+                .clickable(onClick = onBookmark),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                if (bookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                contentDescription = if (bookmarked) "Убрать закладку" else "Добавить закладку",
+                tint = if (bookmarked) theme.accent else theme.secondary.copy(alpha = 0.5f),
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
+
+/** Where each text block of a page is on screen, so a press can be turned into a character offset. */
+private class PageHits {
+    class Entry(var slice: LayoutCoordinates? = null, var text: LayoutCoordinates? = null, var layout: TextLayoutResult? = null)
+
+    val blocks = HashMap<Int, Entry>()
+
+    fun entry(block: Int) = blocks.getOrPut(block) { Entry() }
+
+    /** Block index and character offset under [point], given in [from]'s coordinates. */
+    fun hit(from: LayoutCoordinates, point: Offset): Pair<Int, Int>? {
+        for ((block, entry) in blocks) {
+            val slice = entry.slice?.takeIf { it.isAttached } ?: continue
+            val text = entry.text?.takeIf { it.isAttached } ?: continue
+            val layout = entry.layout ?: continue
+            val inSlice = slice.localPositionOf(from, point)
+            if (inSlice.x < 0 || inSlice.y < 0 || inSlice.x > slice.size.width || inSlice.y > slice.size.height) continue
+            val inText = text.localPositionOf(from, point)
+            return block to layout.getOffsetForPosition(inText)
+        }
+        return null
     }
 }
 
@@ -282,10 +386,13 @@ private fun ChapterPager(
     location: Location,
     layout: LayoutSpec,
     marginPx: Int,
+    headerPx: Int,
+    footerPx: Int,
+    annotations: List<AnnotationEntity>,
     viewModel: ReaderViewModel,
     onLink: LinkHandler,
     onCenterTap: () -> Unit,
-    footerPx: Int,
+    onHighlight: (HighlightDraft) -> Unit,
 ) {
     val theme = layout.prefs.theme
     // Edge pages that stand for the neighbouring chapters; landing on one switches chapter.
@@ -300,6 +407,13 @@ private fun ChapterPager(
     }
     val pagerState = rememberPagerState(initialPage = initial) { count }
     val scope = rememberCoroutineScope()
+    val hits = remember { HashMap<Int, PageHits>() }
+    // Plain holder, not state: it changes on every layout and nothing needs to recompose for it.
+    val pagerCoordinates = remember { arrayOfNulls<LayoutCoordinates>(1) }
+
+    val chapterHighlights = remember(annotations, chapter) {
+        annotations.filter { it.kind == AnnotationKind.HIGHLIGHT && it.chapter == chapter }
+    }
 
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.settledPage }.collect { page ->
@@ -311,38 +425,88 @@ private fun ChapterPager(
         }
     }
 
+    fun hitAt(offset: Offset): Pair<TextBlock, Pair<Int, Int>>? {
+        val from = pagerCoordinates[0] ?: return null
+        val (block, charOffset) = hits[pagerState.currentPage]?.hit(from, offset) ?: return null
+        val textBlock = document.chapters[chapter].blocks.getOrNull(block) as? TextBlock ?: return null
+        return textBlock to (block to charOffset)
+    }
+
+    fun highlightAt(block: Int, offset: Int) = chapterHighlights.firstOrNull {
+        it.block == block && offset >= it.start && offset < it.end
+    }
+
+    val pageIndex = (pagerState.currentPage - first).coerceIn(0, pages.lastIndex)
+    val pageStart = pages[pageIndex].start
+    val nextStart = pages.getOrNull(pageIndex + 1)?.start
+    val bookmarked = annotations.any { it.kind == AnnotationKind.BOOKMARK && it.isOnPage(pageStart, nextStart) }
+
     val density = LocalDensity.current
     Column(Modifier.fillMaxSize()) {
+        Header(
+            title = document.chapters[chapter].title ?: document.title,
+            theme = theme,
+            heightPx = headerPx,
+            bookmarked = bookmarked,
+            onBookmark = { viewModel.toggleBookmark(pageStart, nextStart) },
+        )
         HorizontalPager(
             state = pagerState,
             beyondViewportPageCount = 1,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .pointerInput(count) {
-                    detectTapGestures { offset ->
-                        val third = size.width / 3f
-                        when {
-                            offset.x < third -> scope.launch {
-                                pagerState.animateScrollToPage((pagerState.currentPage - 1).coerceAtLeast(0))
+                .onGloballyPositioned { pagerCoordinates[0] = it }
+                .pointerInput(count, chapterHighlights) {
+                    detectTapGestures(
+                        onLongPress = { offset ->
+                            val (block, at) = hitAt(offset) ?: return@detectTapGestures
+                            val existing = highlightAt(at.first, at.second)
+                            if (existing != null) {
+                                onHighlight(existing.toDraft())
+                            } else {
+                                val range = sentenceAt(block, at.second, layout.language)
+                                if (!range.isEmpty()) {
+                                    onHighlight(
+                                        HighlightDraft(
+                                            chapter = chapter,
+                                            block = at.first,
+                                            start = range.first,
+                                            end = range.last + 1,
+                                            text = block.text.substring(range.first, range.last + 1),
+                                        ),
+                                    )
+                                }
                             }
-                            offset.x > third * 2 -> scope.launch {
-                                pagerState.animateScrollToPage((pagerState.currentPage + 1).coerceAtMost(count - 1))
+                        },
+                        onTap = { offset ->
+                            val existing = hitAt(offset)?.let { (_, at) -> highlightAt(at.first, at.second) }
+                            val third = size.width / 3f
+                            when {
+                                existing != null -> onHighlight(existing.toDraft())
+                                offset.x < third -> scope.launch {
+                                    pagerState.animateScrollToPage((pagerState.currentPage - 1).coerceAtLeast(0))
+                                }
+                                offset.x > third * 2 -> scope.launch {
+                                    pagerState.animateScrollToPage((pagerState.currentPage + 1).coerceAtMost(count - 1))
+                                }
+                                else -> onCenterTap()
                             }
-                            else -> onCenterTap()
-                        }
-                    }
+                        },
+                    )
                 },
         ) { index ->
             val page = pages.getOrNull(index - first)
             Box(Modifier.fillMaxSize().padding(horizontal = with(density) { marginPx.toDp() })) {
-                if (page != null) PageView(document, chapter, page, layout, onLink)
+                if (page != null) {
+                    val pageHits = remember(page) { PageHits().also { hits[index] = it } }
+                    PageView(document, chapter, page, layout, chapterHighlights, pageHits, onLink)
+                }
             }
         }
-        val pageIndex = (pagerState.currentPage - first).coerceIn(0, pages.lastIndex)
         Footer(
             left = "${pageIndex + 1} / ${pages.size}",
-            right = "${(document.progressOf(pages[pageIndex].start) * 100).roundToInt()}%",
+            right = "${(document.progressOf(pageStart) * 100).roundToInt()}%",
             theme = theme,
             heightPx = footerPx,
         )
@@ -362,7 +526,15 @@ private fun Footer(left: String, right: String, theme: ReaderTheme, heightPx: In
 }
 
 @Composable
-private fun PageView(document: Document, chapter: Int, page: Page, layout: LayoutSpec, onLink: LinkHandler) {
+private fun PageView(
+    document: Document,
+    chapter: Int,
+    page: Page,
+    layout: LayoutSpec,
+    highlights: List<AnnotationEntity>,
+    hits: PageHits,
+    onLink: LinkHandler,
+) {
     val blocks = document.chapters[chapter].blocks
     val density = LocalDensity.current
     Column(Modifier.width(with(density) { layout.widthPx.toDp() })) {
@@ -372,7 +544,8 @@ private fun PageView(document: Document, chapter: Int, page: Page, layout: Layou
                 Modifier
                     .fillMaxWidth()
                     .height(with(density) { slice.height.toDp() })
-                    .clipToBounds(),
+                    .clipToBounds()
+                    .onGloballyPositioned { hits.entry(slice.block).slice = it },
             ) {
                 Box(
                     Modifier
@@ -395,17 +568,25 @@ private fun PageView(document: Document, chapter: Int, page: Page, layout: Layou
                             }
                         }
                     } else {
-                        val spec = remember(block, layout) { BlockStyles.spec(block, layout, onLink) }
+                        val blockHighlights = highlights
+                            .filter { it.block == slice.block }
+                            .map { (it.start until it.end) to highlightColor(it.color) }
+                        val spec = remember(block, layout, blockHighlights) {
+                            BlockStyles.spec(block, layout, onLink, blockHighlights)
+                        }
                         if (spec != null) {
                             Text(
                                 text = spec.text,
                                 style = spec.style,
-                                modifier = Modifier.padding(
-                                    start = with(density) { spec.startPad.toDp() },
-                                    end = with(density) { spec.endPad.toDp() },
-                                    top = with(density) { spec.topPad.toDp() },
-                                    bottom = with(density) { spec.bottomPad.toDp() },
-                                ),
+                                onTextLayout = { hits.entry(slice.block).layout = it },
+                                modifier = Modifier
+                                    .padding(
+                                        start = with(density) { spec.startPad.toDp() },
+                                        end = with(density) { spec.endPad.toDp() },
+                                        top = with(density) { spec.topPad.toDp() },
+                                        bottom = with(density) { spec.bottomPad.toDp() },
+                                    )
+                                    .onGloballyPositioned { hits.entry(slice.block).text = it },
                             )
                         }
                     }
@@ -436,6 +617,7 @@ private fun ReaderMenu(
     canGoBack: Boolean,
     onBack: () -> Unit,
     onToc: () -> Unit,
+    onAnnotations: () -> Unit,
     onSettings: () -> Unit,
     onSeek: (Float) -> Unit,
     onPreviousChapter: () -> Unit,
@@ -463,6 +645,7 @@ private fun ReaderMenu(
                     overflow = TextOverflow.Ellipsis,
                 )
                 IconButton(onClick = onToc) { Icon(Icons.AutoMirrored.Filled.List, "Оглавление") }
+                IconButton(onClick = onAnnotations) { Icon(Icons.Default.Bookmarks, "Закладки и цитаты") }
                 IconButton(onClick = onSettings) { Icon(Icons.Default.FormatSize, "Оформление") }
             }
         }
@@ -643,5 +826,152 @@ private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Un
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(label, modifier = Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = onChange)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HighlightSheet(
+    draft: HighlightDraft,
+    document: Document,
+    onSave: (HighlightDraft) -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    var current by remember(draft) { mutableStateOf(draft) }
+    val block = document.chapters[draft.chapter].blocks.getOrNull(draft.block) as? TextBlock
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(if (draft.id == 0L) "Новая цитата" else "Цитата", style = MaterialTheme.typography.titleLarge)
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .background(highlightColor(current.color), MaterialTheme.shapes.small)
+                    .padding(12.dp),
+            ) {
+                Text(current.text, style = MaterialTheme.typography.bodyLarge)
+            }
+            if (block != null && (current.start > 0 || current.end < block.text.length)) {
+                AssistChip(
+                    onClick = { current = current.copy(start = 0, end = block.text.length, text = block.text) },
+                    label = { Text("Весь абзац") },
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                HighlightColors.forEachIndexed { index, color ->
+                    Box(
+                        Modifier
+                            .size(36.dp)
+                            .background(color, CircleShape)
+                            .border(
+                                width = if (index == current.color) 3.dp else 0.dp,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                shape = CircleShape,
+                            )
+                            .clickable { current = current.copy(color = index) },
+                    )
+                }
+            }
+            OutlinedTextField(
+                value = current.note,
+                onValueChange = { current = current.copy(note = it) },
+                label = { Text("Заметка") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 2,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Button(onClick = { onSave(current) }) { Text("Сохранить") }
+                IconButton(onClick = { clipboard.setText(AnnotatedString(current.text)) }) {
+                    Icon(Icons.Default.ContentCopy, "Копировать")
+                }
+                IconButton(onClick = {
+                    val send = Intent(Intent.ACTION_SEND)
+                        .setType("text/plain")
+                        .putExtra(Intent.EXTRA_TEXT, "«${current.text}»\n— ${document.title}")
+                    runCatching { context.startActivity(Intent.createChooser(send, null)) }
+                }) {
+                    Icon(Icons.Default.Share, "Поделиться")
+                }
+                Spacer(Modifier.weight(1f))
+                if (draft.id != 0L) {
+                    TextButton(onClick = onDelete) { Text("Удалить") }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AnnotationsSheet(
+    annotations: List<AnnotationEntity>,
+    onOpen: (AnnotationEntity) -> Unit,
+    onDelete: (AnnotationEntity) -> Unit,
+    onExport: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var filter by remember { mutableStateOf<AnnotationKind?>(null) }
+    val shown = annotations.filter { filter == null || it.kind == filter }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Закладки и цитаты", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            TextButton(onClick = onExport, enabled = annotations.isNotEmpty()) { Text("Экспорт") }
+        }
+        Row(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = filter == null, onClick = { filter = null }, label = { Text("Все") })
+            FilterChip(
+                selected = filter == AnnotationKind.BOOKMARK,
+                onClick = { filter = AnnotationKind.BOOKMARK },
+                label = { Text("Закладки") },
+            )
+            FilterChip(
+                selected = filter == AnnotationKind.HIGHLIGHT,
+                onClick = { filter = AnnotationKind.HIGHLIGHT },
+                label = { Text("Цитаты") },
+            )
+        }
+        if (shown.isEmpty()) {
+            Text(
+                "Пока пусто. Коснитесь уголка страницы, чтобы поставить закладку, или подержите палец на тексте, чтобы сохранить цитату.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(20.dp),
+            )
+        }
+        LazyColumn(Modifier.padding(bottom = 16.dp)) {
+            items(shown, key = { it.id }) { item ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpen(item) }
+                        .padding(start = 20.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    if (item.kind == AnnotationKind.BOOKMARK) {
+                        Icon(Icons.Default.Bookmark, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                    } else {
+                        Box(Modifier.padding(top = 3.dp).size(12.dp).background(HighlightColors[item.color.coerceIn(0, HighlightColors.lastIndex)], CircleShape))
+                    }
+                    Spacer(Modifier.size(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        item.chapterTitle?.let {
+                            Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text(item.text, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                        item.note?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                    IconButton(onClick = { onDelete(item) }) { Icon(Icons.Default.Close, "Удалить") }
+                }
+            }
+        }
     }
 }

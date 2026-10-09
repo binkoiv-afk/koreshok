@@ -60,6 +60,14 @@ class LibraryRepository(
             ?: throw java.io.FileNotFoundException(uri)
     }
 
+    fun annotations(bookUri: String): Flow<List<AnnotationEntity>> = db.annotations().observeForBook(bookUri)
+
+    suspend fun saveAnnotation(annotation: AnnotationEntity) {
+        db.annotations().upsert(annotation)
+    }
+
+    suspend fun deleteAnnotation(id: Long) = db.annotations().delete(id)
+
     suspend fun rescanAll() {
         for (folder in db.folders().all()) rescan(folder.uri)
     }

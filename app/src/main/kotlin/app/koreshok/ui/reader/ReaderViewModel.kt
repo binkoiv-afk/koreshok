@@ -10,6 +10,8 @@ import app.koreshok.core.document.Document
 import app.koreshok.core.document.Documents
 import app.koreshok.core.document.Position
 import app.koreshok.core.model.BookFormat
+import app.koreshok.data.AnnotationEntity
+import app.koreshok.data.AnnotationKind
 import app.koreshok.data.LibraryRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,7 +25,7 @@ import kotlinx.coroutines.withContext
 sealed interface ReaderState {
     data object Loading : ReaderState
     data class Failed(val message: String) : ReaderState
-    data class Ready(val document: Document, val language: String?) : ReaderState
+    data class Ready(val document: Document, val language: String?, val authors: String) : ReaderState
 }
 
 /**
@@ -48,6 +50,9 @@ class ReaderViewModel(
     private val _history = MutableStateFlow<List<Position>>(emptyList())
     val history: StateFlow<List<Position>> = _history.asStateFlow()
 
+    val annotations: StateFlow<List<AnnotationEntity>> =
+        library.annotations(uri).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
     /** Null until the saved settings are read, so the first layout already uses them. */
     val prefs: StateFlow<ReaderPrefs?> = settings.prefs.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
@@ -62,7 +67,7 @@ class ReaderViewModel(
                     ?.takeIf { it.chapter in document.chapters.indices }
                     ?: Position.START
                 _location.value = Location(saved, jump = 1)
-                _state.value = ReaderState.Ready(document, book.language)
+                _state.value = ReaderState.Ready(document, book.language, book.authors)
                 library.saveProgress(uri, saved.serialize(), document.progressOf(saved))
             } catch (e: Exception) {
                 _state.value = ReaderState.Failed(e.message ?: e.javaClass.simpleName)
@@ -114,6 +119,57 @@ class ReaderViewModel(
         goTo(last)
     }
 
+    /** Adds a bookmark at the page start, or removes the ones already on this page. */
+    fun toggleBookmark(pageStart: Position, nextPageStart: Position?) {
+        val doc = document ?: return
+        val onPage = annotations.value.filter { it.kind == AnnotationKind.BOOKMARK && it.isOnPage(pageStart, nextPageStart) }
+        viewModelScope.launch {
+            if (onPage.isNotEmpty()) {
+                onPage.forEach { library.deleteAnnotation(it.id) }
+            } else {
+                library.saveAnnotation(
+                    AnnotationEntity(
+                        bookUri = uri,
+                        kind = AnnotationKind.BOOKMARK,
+                        chapter = pageStart.chapter,
+                        block = pageStart.block,
+                        start = pageStart.offset,
+                        end = pageStart.offset,
+                        text = snippetAt(doc, pageStart),
+                        chapterTitle = doc.chapters[pageStart.chapter].title,
+                        createdAt = System.currentTimeMillis(),
+                    ),
+                )
+            }
+        }
+    }
+
+    fun saveHighlight(draft: HighlightDraft) {
+        val doc = document ?: return
+        viewModelScope.launch {
+            library.saveAnnotation(
+                AnnotationEntity(
+                    id = draft.id,
+                    bookUri = uri,
+                    kind = AnnotationKind.HIGHLIGHT,
+                    chapter = draft.chapter,
+                    block = draft.block,
+                    start = draft.start,
+                    end = draft.end,
+                    color = draft.color,
+                    note = draft.note.takeIf { it.isNotBlank() },
+                    text = draft.text,
+                    chapterTitle = doc.chapters[draft.chapter].title,
+                    createdAt = annotations.value.firstOrNull { it.id == draft.id }?.createdAt ?: System.currentTimeMillis(),
+                ),
+            )
+        }
+    }
+
+    fun deleteAnnotation(id: Long) {
+        viewModelScope.launch { library.deleteAnnotation(id) }
+    }
+
     fun updatePrefs(transform: (ReaderPrefs) -> ReaderPrefs) {
         val current = prefs.value ?: return
         viewModelScope.launch { settings.save(transform(current)) }
@@ -127,4 +183,11 @@ class ReaderViewModel(
             }
         }
     }
+}
+
+fun AnnotationEntity.position() = Position(chapter, block, start)
+
+fun AnnotationEntity.isOnPage(pageStart: Position, nextPageStart: Position?): Boolean {
+    val at = position()
+    return at >= pageStart && (nextPageStart == null || at < nextPageStart) && at.chapter == pageStart.chapter
 }

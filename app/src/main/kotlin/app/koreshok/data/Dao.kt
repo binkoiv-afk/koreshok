@@ -47,3 +47,15 @@ interface FolderDao {
     @Query("DELETE FROM folders WHERE uri = :uri")
     suspend fun delete(uri: String)
 }
+
+@Dao
+interface AnnotationDao {
+    @Query("SELECT * FROM annotations WHERE bookUri = :bookUri ORDER BY chapter, block, start")
+    fun observeForBook(bookUri: String): Flow<List<AnnotationEntity>>
+
+    @Upsert
+    suspend fun upsert(annotation: AnnotationEntity): Long
+
+    @Query("DELETE FROM annotations WHERE id = :id")
+    suspend fun delete(id: Long)
+}
