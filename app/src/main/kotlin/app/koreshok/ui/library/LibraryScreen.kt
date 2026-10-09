@@ -9,6 +9,20 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.graphics.luminance
+import app.koreshok.ui.components.DarkShelf
+import app.koreshok.ui.components.FinishedSeal
+import app.koreshok.ui.components.LightShelf
+import app.koreshok.ui.components.Ribbon
+import app.koreshok.ui.components.ShelfBoard
+import app.koreshok.ui.components.ShelfColors
+import app.koreshok.ui.components.ShelfRow
+import app.koreshok.ui.components.shelfWall
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -24,11 +38,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyGridScope
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -117,99 +126,135 @@ class ShelfActions(
     val onUpdate: () -> Unit = {},
 )
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ShelfContent(state: LibraryState, update: UpdateState, actions: ShelfActions, modifier: Modifier = Modifier) {
+    val wood = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) DarkShelf else LightShelf
     if (state.loaded && state.totalBooks == 0 && state.scan == null) {
-        Column(modifier.fillMaxSize().padding(horizontal = 20.dp)) {
+        Column(modifier.fillMaxSize().shelfWall(wood).padding(horizontal = 20.dp)) {
             ShelfHeader(state, actions, showTools = false)
             EmptyLibrary(actions.onAddFolder)
         }
         return
     }
     val list = state.prefs.list
-    LazyVerticalGrid(
-        columns = if (list) GridCells.Fixed(1) else GridCells.Adaptive(minSize = 104.dp),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalArrangement = Arrangement.spacedBy(if (list) 4.dp else 20.dp),
-        modifier = modifier.fillMaxSize(),
-    ) {
-        fullWidth("header") { ShelfHeader(state, actions, showTools = true) }
-        if (update != UpdateState.None) fullWidth("update") { UpdateBanner(update, actions.onUpdate) }
-        state.scan?.let { scan ->
-            fullWidth("scan") {
-                Column(Modifier.padding(vertical = 4.dp)) {
-                    Text(
-                        "Ищу книги в «${scan.folder}»: ${scan.processed} из ${scan.found}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    if (scan.found > 0) {
-                        LinearProgressIndicator(progress = { scan.processed.toFloat() / scan.found }, modifier = Modifier.fillMaxWidth())
-                    } else {
-                        LinearProgressIndicator(Modifier.fillMaxWidth())
-                    }
-                }
-            }
-        }
-        val current = state.reading.firstOrNull()
-        if (current != null && state.status == null) {
-            fullWidth("continue") { ContinueCard(current, actions) }
-            val others = state.reading.drop(1)
-            if (others.isNotEmpty()) {
-                fullWidth("reading") { ReadingRow(others, actions) }
-            }
-        }
-        fullWidth("status") { StatusChips(state, actions.onStatus) }
-        val nothing = state.groups.all { it.items.isEmpty() }
-        if (nothing) {
-            fullWidth("nothing") {
-                Text(
-                    "Здесь пока ничего нет",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
-                )
-            }
-        }
-        state.groups.forEach { group ->
-            if (group.title.isNotEmpty() && group.items.isNotEmpty()) {
-                fullWidth("group:${group.title}") {
-                    Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.Bottom) {
+    BoxWithConstraints(modifier.fillMaxSize().shelfWall(wood)) {
+        // As many books per shelf as fit at about 100dp each, never fewer than three.
+        val columns = ((maxWidth - 40.dp + 14.dp) / (100.dp + 14.dp)).toInt().coerceAtLeast(3)
+        LazyColumn(
+            contentPadding = PaddingValues(bottom = 24.dp),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            padded("header") { ShelfHeader(state, actions, showTools = true) }
+            if (update != UpdateState.None) padded("update") { UpdateBanner(update, actions.onUpdate) }
+            state.scan?.let { scan ->
+                padded("scan") {
+                    Column(Modifier.padding(vertical = 4.dp)) {
                         Text(
-                            group.title,
-                            style = MaterialTheme.typography.titleLarge,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false),
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "${group.items.size}",
-                            style = MaterialTheme.typography.labelLarge,
+                            "Ищу книги в «${scan.folder}»: ${scan.processed} из ${scan.found}",
+                            style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(bottom = 3.dp),
                         )
+                        Spacer(Modifier.height(6.dp))
+                        if (scan.found > 0) {
+                            LinearProgressIndicator(progress = { scan.processed.toFloat() / scan.found }, modifier = Modifier.fillMaxWidth())
+                        } else {
+                            LinearProgressIndicator(Modifier.fillMaxWidth())
+                        }
                     }
                 }
             }
-            // A book can sit in several genre groups, so keys include the group.
-            items(group.items, key = { "${group.title}:${it.uri}" }) { book ->
-                val series = state.prefs.groupBy == GroupBy.SERIES
+            val current = state.reading.firstOrNull()
+            if (current != null && state.status == null) {
+                padded("continue") { ContinueCard(current, actions) }
+                val others = state.reading.drop(1)
+                if (others.isNotEmpty()) {
+                    item(key = "reading") { ReadingRow(others, actions, wood) }
+                }
+            }
+            padded("status") { StatusChips(state, actions.onStatus) }
+            if (state.groups.all { it.items.isEmpty() }) {
+                padded("nothing") {
+                    Text(
+                        "Здесь пока ничего нет",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
+                    )
+                }
+            }
+            val series = state.prefs.groupBy == GroupBy.SERIES
+            state.groups.forEach { group ->
+                if (group.title.isNotEmpty() && group.items.isNotEmpty()) {
+                    padded("group:${group.title}") { GroupTitle(group.title, group.items.size) }
+                }
                 if (list) {
-                    BookRow(book, series, onClick = { actions.onOpen(book) }, onLongClick = { actions.onDetails(book) })
+                    // A book can sit in several genre groups, so keys include the group.
+                    items(group.items, key = { "${group.title}:${it.uri}" }) { book ->
+                        Box(Modifier.padding(horizontal = 20.dp)) {
+                            BookRow(book, series, onClick = { actions.onOpen(book) }, onLongClick = { actions.onDetails(book) })
+                        }
+                    }
                 } else {
-                    BookTile(book, series, onClick = { actions.onOpen(book) }, onLongClick = { actions.onDetails(book) })
+                    val rows = group.items.chunked(columns)
+                    itemsIndexed(rows, key = { i, row -> "${group.title}:row$i:${row.first().uri}" }) { i, row ->
+                        ShelfRow(
+                            books = row,
+                            columns = columns,
+                            colors = wood,
+                            seed = (group.title.hashCode() * 31) + i,
+                            cover = { book, coverModifier -> ShelfBook(book, series, coverModifier) },
+                            onClick = actions.onOpen,
+                            onLongClick = actions.onDetails,
+                            key = { it.uri },
+                        )
+                        Spacer(Modifier.height(12.dp))
+                    }
                 }
             }
         }
     }
 }
 
-private fun LazyGridScope.fullWidth(key: String, content: @Composable () -> Unit) {
-    item(key = key, span = { GridItemSpan(maxLineSpan) }) { content() }
+private fun LazyListScope.padded(key: String, content: @Composable () -> Unit) {
+    item(key = key) { Box(Modifier.padding(horizontal = 20.dp)) { content() } }
+}
+
+@Composable
+private fun GroupTitle(title: String, count: Int) {
+    Row(Modifier.padding(top = 16.dp, bottom = 8.dp), verticalAlignment = Alignment.Bottom) {
+        Text(
+            title,
+            style = MaterialTheme.typography.titleLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            "$count",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 3.dp),
+        )
+    }
+}
+
+/** A book standing on the shelf: the cover, a ribbon while reading, a seal once finished. */
+@Composable
+private fun ShelfBook(book: BookEntity, showSeriesNumber: Boolean, modifier: Modifier) {
+    Box(modifier.aspectRatio(2f / 3f)) {
+        val title = if (showSeriesNumber) book.seriesIndex?.let { "${formatIndex(it)}. ${book.title}" } ?: book.title else book.title
+        BookCover(title, book.authors, book.coverPath?.let(::File), Modifier.fillMaxSize(), elevation = 8.dp)
+        when (ReadingStatus.of(book.progress)) {
+            ReadingStatus.READING -> Ribbon(MaterialTheme.colorScheme.secondary, Modifier.align(Alignment.TopEnd).padding(end = 10.dp))
+            ReadingStatus.FINISHED -> FinishedSeal(
+                MaterialTheme.colorScheme.primary,
+                MaterialTheme.colorScheme.onPrimary,
+                Modifier.align(Alignment.BottomEnd).padding(6.dp),
+            )
+            ReadingStatus.NEW -> Unit
+        }
+    }
 }
 
 @Composable
@@ -321,19 +366,23 @@ private fun ContinueCard(book: BookEntity, actions: ShelfActions) {
 }
 
 @Composable
-private fun ReadingRow(books: List<BookEntity>, actions: ShelfActions) {
-    Column(Modifier.padding(top = 8.dp)) {
-        Text("Читаю сейчас", style = MaterialTheme.typography.titleMedium)
+private fun ReadingRow(books: List<BookEntity>, actions: ShelfActions, wood: ShelfColors) {
+    Column(Modifier.padding(top = 16.dp)) {
+        Text("Читаю сейчас", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 20.dp))
         Spacer(Modifier.height(10.dp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(end = 8.dp)) {
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = PaddingValues(horizontal = 26.dp),
+            verticalAlignment = Alignment.Bottom,
+        ) {
             items(books, key = { it.uri }) { book ->
-                Column(Modifier.width(76.dp).clickable { actions.onOpen(book) }) {
-                    BookCover(book.title, book.authors, book.coverPath?.let(::File), Modifier.fillMaxWidth().aspectRatio(2f / 3f), compact = true, elevation = 4.dp)
-                    Spacer(Modifier.height(6.dp))
-                    ProgressLine(book.progress)
+                Box(Modifier.width(72.dp).aspectRatio(2f / 3f).clickable { actions.onOpen(book) }) {
+                    BookCover(book.title, book.authors, book.coverPath?.let(::File), Modifier.fillMaxSize(), compact = true, elevation = 6.dp)
+                    Ribbon(MaterialTheme.colorScheme.secondary, Modifier.align(Alignment.TopEnd).padding(end = 8.dp))
                 }
             }
         }
+        ShelfBoard(wood, seed = 7, modifier = Modifier.offset(y = (-4).dp))
     }
 }
 
@@ -365,38 +414,6 @@ private fun StatusChips(state: LibraryState, onStatus: (ReadingStatus?) -> Unit)
                 ),
             )
         }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun BookTile(book: BookEntity, showSeriesNumber: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
-    Column(Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
-        Box {
-            BookCover(book.title, book.authors, book.coverPath?.let(::File), Modifier.fillMaxWidth().aspectRatio(2f / 3f))
-            val status = ReadingStatus.of(book.progress)
-            if (status == ReadingStatus.FINISHED) {
-                Surface(
-                    color = MaterialTheme.colorScheme.secondary,
-                    shape = RoundedCornerShape(bottomStart = 8.dp, topEnd = 8.dp),
-                    modifier = Modifier.align(Alignment.TopEnd),
-                ) {
-                    Text(
-                        "прочитано",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSecondary,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                    )
-                }
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        if (book.progress > 0f && book.progress < 0.99f) {
-            ProgressLine(book.progress)
-            Spacer(Modifier.height(6.dp))
-        }
-        val prefix = if (showSeriesNumber) book.seriesIndex?.let { "${formatIndex(it)}. " }.orEmpty() else ""
-        CoverCaption(prefix + book.title, book.authors, titleStyle = BookTitleStyle, authorColor = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
