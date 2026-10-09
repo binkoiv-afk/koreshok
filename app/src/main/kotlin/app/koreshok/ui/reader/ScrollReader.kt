@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
@@ -119,7 +120,7 @@ internal fun ScrollReader(
             Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .pointerInput(Unit) { viewportPx.value = size.height },
+                .onSizeChanged { viewportPx.value = it.height },
         ) {
             LazyColumn(
                 state = listState,

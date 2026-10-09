@@ -88,7 +88,6 @@ fun CatalogBook(
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
-                itemVerticalAlignment = Alignment.CenterVertically,
             ) {
                 entry.downloads.forEachIndexed { index, file ->
                     FormatButton(file, downloads[file.url], primary = index == 0, onDownload = { onDownload(entry, file) }, onRead = onRead)

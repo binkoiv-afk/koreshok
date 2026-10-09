@@ -28,7 +28,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -267,9 +266,9 @@ fun SearchContent(
                                         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                                     ) {
                                         Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Default.Person, null, Modifier.size(16.dp))
-                                            Spacer(Modifier.width(6.dp))
                                             Text(folder.title, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                                            Spacer(Modifier.width(4.dp))
+                                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(16.dp))
                                         }
                                     }
                                 }
