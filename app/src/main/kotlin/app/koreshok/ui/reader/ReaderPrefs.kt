@@ -18,9 +18,9 @@ enum class ReaderTheme(val label: String, val background: Color, val text: Color
 }
 
 enum class ReaderFont(val label: String) {
-    SERIF("С засечками"),
-    SANS("Без засечек"),
-    MONO("Моноширинный"),
+    SERIF("Антиква"),
+    SANS("Гротеск"),
+    MONO("Моно"),
 }
 
 data class ReaderPrefs(
@@ -32,6 +32,8 @@ data class ReaderPrefs(
     val justify: Boolean = true,
     val hyphenate: Boolean = true,
     val indent: Boolean = true,
+    /** One continuous column instead of pages. */
+    val scroll: Boolean = false,
 )
 
 private val Context.readerStore by preferencesDataStore("reader")
@@ -45,6 +47,7 @@ class ReaderSettings(private val context: Context) {
     private val justify = booleanPreferencesKey("justify")
     private val hyphenate = booleanPreferencesKey("hyphenate")
     private val indent = booleanPreferencesKey("indent")
+    private val scroll = booleanPreferencesKey("scroll")
 
     val prefs: Flow<ReaderPrefs> = context.readerStore.data.map { p ->
         val defaults = ReaderPrefs()
@@ -57,6 +60,7 @@ class ReaderSettings(private val context: Context) {
             justify = p[justify] ?: defaults.justify,
             hyphenate = p[hyphenate] ?: defaults.hyphenate,
             indent = p[indent] ?: defaults.indent,
+            scroll = p[scroll] ?: defaults.scroll,
         )
     }
 
@@ -70,6 +74,7 @@ class ReaderSettings(private val context: Context) {
             p[justify] = value.justify
             p[hyphenate] = value.hyphenate
             p[indent] = value.indent
+            p[scroll] = value.scroll
         }
     }
 }
