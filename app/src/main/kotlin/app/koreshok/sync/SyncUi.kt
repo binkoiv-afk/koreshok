@@ -325,9 +325,9 @@ fun CloudShelfContent(cloud: CloudShelf, onUpload: () -> Unit, onDownload: (List
                 val book = cloud.missing[index]
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(book.name.substringBeforeLast('.'), style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        Text(bookTitle(book.name), style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                         Text(
-                            "${book.name.substringAfterLast('.', "").uppercase()} · ${sizeLabel(book.size)}",
+                            "${bookFormat(book.name)} · ${sizeLabel(book.size)}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -340,6 +340,11 @@ fun CloudShelfContent(cloud: CloudShelf, onUpload: () -> Unit, onDownload: (List
         }
     }
 }
+
+/** "Омон Ра.fb2.zip" → "Омон Ра" and "FB2". */
+private fun bookTitle(name: String) = name.removeSuffix(".zip").substringBeforeLast('.')
+
+private fun bookFormat(name: String) = name.removeSuffix(".zip").substringAfterLast('.', "").uppercase()
 
 private fun sizeLabel(bytes: Long): String = when {
     bytes >= 1_000_000 -> "%.1f МБ".format(bytes / 1_000_000.0)

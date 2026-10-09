@@ -256,10 +256,10 @@ class SyncService(
     /** Downloads [books] from the cloud onto this device's shelf. */
     fun download(books: List<CloudBook>) = transfer { disk ->
         books.forEachIndexed { index, book ->
-            progress(false, book.name.substringBeforeLast('.'), index, books.size, 0f)
+            progress(false, book.name.removeSuffix(".zip").substringBeforeLast('.'), index, books.size, 0f)
             val target = File(library.downloadsDir, book.name)
             val partial = File(library.downloadsDir, book.name + ".part")
-            disk.download(book, partial) { progress(false, book.name.substringBeforeLast('.'), index, books.size, it) }
+            disk.download(book, partial) { progress(false, book.name.removeSuffix(".zip").substringBeforeLast('.'), index, books.size, it) }
             partial.renameTo(target)
             library.importDownloaded(target)
         }
