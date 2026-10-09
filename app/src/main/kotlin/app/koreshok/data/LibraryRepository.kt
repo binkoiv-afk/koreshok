@@ -8,6 +8,7 @@ import app.koreshok.core.format.EpubMetadataParser
 import app.koreshok.core.format.Fb2MetadataParser
 import app.koreshok.core.model.BookFormat
 import app.koreshok.core.model.BookMetadata
+import app.koreshok.ui.pages.PageSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -126,12 +127,19 @@ class LibraryRepository(
     private suspend fun index(folderUri: String, file: DocumentFile, format: BookFormat) {
         val uri = file.uri.toString()
         val fileName = file.name.orEmpty()
+        val previous = db.books().get(uri)
         val fallbackTitle = format.extensions
             .firstOrNull { fileName.lowercase().endsWith(".$it") }
             ?.let { fileName.dropLast(it.length + 1) }
             ?: fileName
-        val meta = readMetadata(file, format, fallbackTitle)
-        val previous = db.books().get(uri)
+        val meta = readMetadata(file, format, fallbackTitle).let { meta ->
+            // Fixed-page books have no cover inside; their first page serves as one.
+            if (meta.cover == null && format in PageSource.formats && previous?.coverPath == null) {
+                meta.copy(cover = PageSource.cover(context, uri, format))
+            } else {
+                meta
+            }
+        }
         db.books().upsert(
             BookEntity(
                 uri = uri,
@@ -150,7 +158,7 @@ class LibraryRepository(
                 year = meta.year,
                 publisher = meta.publisher,
                 description = meta.description,
-                coverPath = meta.cover?.let { saveCover(uri, it) },
+                coverPath = meta.cover?.let { saveCover(uri, it) } ?: previous?.coverPath,
                 addedAt = previous?.addedAt ?: System.currentTimeMillis(),
                 lastOpenedAt = previous?.lastOpenedAt,
                 progress = previous?.progress ?: 0f,

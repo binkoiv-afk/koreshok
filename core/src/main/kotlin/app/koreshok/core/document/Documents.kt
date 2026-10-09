@@ -4,12 +4,13 @@ import app.koreshok.core.model.BookFormat
 
 object Documents {
     /** Formats the reflowable reader can open today. */
-    val supported = setOf(BookFormat.EPUB, BookFormat.FB2, BookFormat.FB2_ZIP)
+    val supported = setOf(BookFormat.EPUB, BookFormat.FB2, BookFormat.FB2_ZIP, BookFormat.TXT)
 
     fun parse(bytes: ByteArray, format: BookFormat, fallbackTitle: String): Document = when (format) {
         BookFormat.EPUB -> EpubDocumentParser.parse(bytes, fallbackTitle)
         BookFormat.FB2 -> Fb2DocumentParser.parse(bytes, fallbackTitle)
         BookFormat.FB2_ZIP -> Fb2DocumentParser.parseZipped(bytes, fallbackTitle)
+        BookFormat.TXT -> TxtDocumentParser.parse(bytes, fallbackTitle)
         else -> throw UnsupportedOperationException("$format is not supported yet")
     }
 }

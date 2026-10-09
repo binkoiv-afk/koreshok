@@ -82,6 +82,7 @@ import app.koreshok.core.library.GroupBy
 import app.koreshok.core.library.SortOrder
 import app.koreshok.data.BookEntity
 import app.koreshok.update.Updates
+import app.koreshok.ui.pages.PageSource
 import coil.compose.AsyncImage
 import java.io.File
 
@@ -94,7 +95,7 @@ fun LibraryScreen(
 ) {
     val context = LocalContext.current
     val open: (BookEntity) -> Unit = { book ->
-        if (BookFormat.valueOf(book.format) in Documents.supported) {
+        if (BookFormat.valueOf(book.format).let { it in Documents.supported || it in PageSource.formats }) {
             onRead(book.uri)
         } else {
             // Until their engines land, other formats open in whatever app the phone has for them.
