@@ -5,6 +5,12 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// CI passes the run number, so every published build has a higher version than the last.
+val buildNumber = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
+// The release key lives in the repo, encrypted; its password is a GitHub secret. Without it
+// (local builds, or before the secret exists) the build falls back to the debug key.
+val keystorePassword: String? = System.getenv("KEYSTORE_PASSWORD")?.takeIf { it.isNotEmpty() }
+
 android {
     namespace = "app.koreshok"
     compileSdk = 35
@@ -13,16 +19,26 @@ android {
         applicationId = "app.koreshok"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = buildNumber
+        versionName = "0.1.$buildNumber"
+    }
+
+    signingConfigs {
+        if (keystorePassword != null) {
+            create("release") {
+                storeFile = file("signing/koreshok.jks")
+                storePassword = keystorePassword
+                keyAlias = "koreshok"
+                keyPassword = keystorePassword
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Personal builds are signed with the debug key so the CI APK installs as is.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 
@@ -35,6 +51,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

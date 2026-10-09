@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Корешок: three spines on a shelf (monochrome for themed icons). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF" android:pathData="M28.5,78h51.0a1.5,1.5 0,0 1,1.5,1.5v0.0a1.5,1.5 0,0 1,-1.5,1.5h-51.0a1.5,1.5 0,0 1,-1.5,-1.5v-0.0a1.5,1.5 0,0 1,1.5,-1.5z"/>
+    <path android:fillColor="#FFFFFF" android:pathData="M32.5,36h9.0a1.5,1.5 0,0 1,1.5,1.5v39.0a1.5,1.5 0,0 1,-1.5,1.5h-9.0a1.5,1.5 0,0 1,-1.5,-1.5v-39.0a1.5,1.5 0,0 1,1.5,-1.5z"/>
+    <path android:fillColor="#FFFFFF" android:pathData="M46.5,29h11.0a1.5,1.5 0,0 1,1.5,1.5v46.0a1.5,1.5 0,0 1,-1.5,1.5h-11.0a1.5,1.5 0,0 1,-1.5,-1.5v-46.0a1.5,1.5 0,0 1,1.5,-1.5z"/>
+    <group android:rotation="-13" android:pivotX="65" android:pivotY="78">
+        <path android:fillColor="#FFFFFF" android:pathData="M66.5,36h9.0a1.5,1.5 0,0 1,1.5,1.5v39.0a1.5,1.5 0,0 1,-1.5,1.5h-9.0a1.5,1.5 0,0 1,-1.5,-1.5v-39.0a1.5,1.5 0,0 1,1.5,-1.5z"/>
+    </group>
+</vector>

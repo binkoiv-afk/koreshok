@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Корешок: three spines on a shelf, the middle one with a bookmark ribbon. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#F3E6C8" android:fillAlpha="0.35" android:pathData="M28.5,78h51.0a1.5,1.5 0,0 1,1.5,1.5v0.0a1.5,1.5 0,0 1,-1.5,1.5h-51.0a1.5,1.5 0,0 1,-1.5,-1.5v-0.0a1.5,1.5 0,0 1,1.5,-1.5z"/>
+    <path android:fillColor="#F3E6C8" android:pathData="M32.5,36h9.0a1.5,1.5 0,0 1,1.5,1.5v39.0a1.5,1.5 0,0 1,-1.5,1.5h-9.0a1.5,1.5 0,0 1,-1.5,-1.5v-39.0a1.5,1.5 0,0 1,1.5,-1.5z"/>
+    <path android:fillColor="#CDB98F" android:pathData="M31,41h12v2h-12z"/>
+    <path android:fillColor="#CDB98F" android:pathData="M31,71h12v2h-12z"/>
+    <path android:fillColor="#CDB98F" android:pathData="M35,49h4a1,1 0,0 1,1,1v12a1,1 0,0 1,-1,1h-4a1,1 0,0 1,-1,-1v-12a1,1 0,0 1,1,-1z"/>
+    <group android:rotation="-13" android:pivotX="65" android:pivotY="78">
+        <path android:fillColor="#C8553D" android:pathData="M66.5,36h9.0a1.5,1.5 0,0 1,1.5,1.5v39.0a1.5,1.5 0,0 1,-1.5,1.5h-9.0a1.5,1.5 0,0 1,-1.5,-1.5v-39.0a1.5,1.5 0,0 1,1.5,-1.5z"/>
+        <path android:fillColor="#93392A" android:pathData="M65,41h12v2h-12z"/>
+        <path android:fillColor="#93392A" android:pathData="M65,71h12v2h-12z"/>
+    </group>
+    <path android:fillColor="#E5A84B" android:pathData="M46.5,29h11.0a1.5,1.5 0,0 1,1.5,1.5v46.0a1.5,1.5 0,0 1,-1.5,1.5h-11.0a1.5,1.5 0,0 1,-1.5,-1.5v-46.0a1.5,1.5 0,0 1,1.5,-1.5z"/>
+    <path android:fillColor="#B97F2B" android:pathData="M45,34h14v2h-14z"/>
+    <path android:fillColor="#B97F2B" android:pathData="M45,72h14v2h-14z"/>
+    <path android:fillColor="#C8553D" android:pathData="M50,29h4v12l-2,-2.2l-2,2.2z"/>
+</vector>

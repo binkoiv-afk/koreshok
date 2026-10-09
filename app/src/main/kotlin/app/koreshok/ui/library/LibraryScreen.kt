@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.DropdownMenu
@@ -51,6 +52,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -77,6 +79,7 @@ import app.koreshok.core.model.BookFormat
 import app.koreshok.core.library.GroupBy
 import app.koreshok.core.library.SortOrder
 import app.koreshok.data.BookEntity
+import app.koreshok.update.Updates
 import coil.compose.AsyncImage
 import java.io.File
 
@@ -99,6 +102,8 @@ fun LibraryScreen(
         }
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val update by viewModel.update.collectAsStateWithLifecycle()
+    val checkMessage by viewModel.checkMessage.collectAsStateWithLifecycle()
     var searching by rememberSaveable { mutableStateOf(false) }
     var showFolders by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<BookEntity?>(null) }
@@ -149,6 +154,7 @@ fun LibraryScreen(
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
+            UpdateBanner(update) { viewModel.downloadUpdate(context) }
             state.scan?.let { scan ->
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     Text(
@@ -180,6 +186,8 @@ fun LibraryScreen(
             onAdd = { pickFolder.launch(null) },
             onRemove = viewModel::removeFolder,
             onRescan = viewModel::rescan,
+            checkMessage = checkMessage,
+            onCheckUpdate = { viewModel.checkForUpdate() },
             onDismiss = { showFolders = false },
         )
     }
@@ -379,6 +387,8 @@ private fun FoldersSheet(
     onAdd: () -> Unit,
     onRemove: (String) -> Unit,
     onRescan: () -> Unit,
+    checkMessage: String?,
+    onCheckUpdate: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -408,6 +418,18 @@ private fun FoldersSheet(
                     Spacer(Modifier.size(8.dp))
                     Text("Обновить")
                 }
+            }
+            Spacer(Modifier.height(16.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Корешок, сборка ${Updates.currentBuild}", style = MaterialTheme.typography.bodyMedium)
+                    checkMessage?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                TextButton(onClick = onCheckUpdate) { Text("Проверить обновления") }
             }
         }
     }
@@ -462,6 +484,35 @@ private fun BookDetailsSheet(book: BookEntity, onRead: () -> Unit, onDismiss: ()
             Spacer(Modifier.height(16.dp))
             FilledTonalButton(onClick = onRead, modifier = Modifier.fillMaxWidth()) {
                 Text(if (book.progress > 0f) "Продолжить чтение" else "Читать")
+            }
+        }
+    }
+}
+
+@Composable
+private fun UpdateBanner(state: UpdateState, onUpdate: () -> Unit) {
+    val (title, action, progress) = when (state) {
+        UpdateState.None -> return
+        is UpdateState.Available -> Triple("Вышла сборка ${state.update.build}", "Обновить", null)
+        is UpdateState.Downloading -> Triple("Скачиваю сборку ${state.update.build}…", null, state.progress)
+        is UpdateState.Ready -> Triple("Сборка ${state.update.build} скачана", "Установить", null)
+        is UpdateState.Failed -> Triple("Не удалось скачать: ${state.message}", "Ещё раз", null)
+    }
+    Surface(
+        color = MaterialTheme.colorScheme.primaryContainer,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.SystemUpdate, null)
+                Spacer(Modifier.size(12.dp))
+                Text(title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                if (action != null) TextButton(onClick = onUpdate) { Text(action) }
+            }
+            if (progress != null) {
+                Spacer(Modifier.height(8.dp))
+                LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
             }
         }
     }

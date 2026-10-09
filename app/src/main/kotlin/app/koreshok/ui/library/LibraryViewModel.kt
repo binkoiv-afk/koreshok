@@ -1,5 +1,6 @@
 package app.koreshok.ui.library
 
+import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -19,7 +20,11 @@ import app.koreshok.data.ScanProgress
 import app.koreshok.data.ShelfPrefs
 import app.koreshok.data.ShelfSettings
 import kotlinx.coroutines.flow.MutableStateFlow
+import app.koreshok.update.AppUpdate
+import app.koreshok.update.Updates
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asStateFlow
+import java.io.File
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
@@ -34,6 +39,14 @@ data class LibraryState(
     val scan: ScanProgress? = null,
     val loaded: Boolean = false,
 )
+
+sealed interface UpdateState {
+    data object None : UpdateState
+    data class Available(val update: AppUpdate) : UpdateState
+    data class Downloading(val update: AppUpdate, val progress: Float) : UpdateState
+    data class Ready(val update: AppUpdate, val apk: File) : UpdateState
+    data class Failed(val update: AppUpdate, val message: String) : UpdateState
+}
 
 class LibraryViewModel(
     private val library: LibraryRepository,
@@ -62,8 +75,55 @@ class LibraryViewModel(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryState())
 
+    private val _update = MutableStateFlow<UpdateState>(UpdateState.None)
+    val update: StateFlow<UpdateState> = _update.asStateFlow()
+
+    /** Null while idle, otherwise the result of the last manual check, for the folders sheet. */
+    private val _checkMessage = MutableStateFlow<String?>(null)
+    val checkMessage: StateFlow<String?> = _checkMessage.asStateFlow()
+
     init {
         viewModelScope.launch { library.rescanAll() }
+        viewModelScope.launch { checkForUpdate(manual = false) }
+    }
+
+    fun checkForUpdate(manual: Boolean = true) = viewModelScope.launch {
+        if (manual) _checkMessage.value = "Проверяю…"
+        val found = runCatching { Updates.check() }
+        found.getOrNull()?.let { _update.value = UpdateState.Available(it) }
+        if (manual) {
+            _checkMessage.value = when {
+                found.isFailure -> "Не удалось проверить: нет связи с GitHub"
+                found.getOrNull() == null -> "У вас последняя версия"
+                else -> "Есть новая версия"
+            }
+        }
+    }
+
+    fun downloadUpdate(activityContext: Context) {
+        // The download outlives the screen, so it must not hold on to the activity.
+        val context = activityContext.applicationContext
+        val update = when (val state = _update.value) {
+            is UpdateState.Available -> state.update
+            is UpdateState.Failed -> state.update
+            is UpdateState.Ready -> {
+                Updates.install(context, state.apk)
+                return
+            }
+            else -> return
+        }
+        viewModelScope.launch {
+            _update.value = UpdateState.Downloading(update, 0f)
+            try {
+                val apk = Updates.download(context, update) { progress ->
+                    _update.value = UpdateState.Downloading(update, progress)
+                }
+                _update.value = UpdateState.Ready(update, apk)
+                Updates.install(context, apk)
+            } catch (e: Exception) {
+                _update.value = UpdateState.Failed(update, e.message ?: "ошибка загрузки")
+            }
+        }
     }
 
     fun setQuery(value: String) {
