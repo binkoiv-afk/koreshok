@@ -19,6 +19,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.LibraryBooks
 import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -297,7 +299,7 @@ fun CloudShelfContent(cloud: CloudShelf, onUpload: () -> Unit, onDownload: (List
             item {
                 Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
                     Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(androidx.compose.material.icons.Icons.Default.CloudUpload, null, tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Default.CloudUpload, null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text("Выгрузить полку", style = MaterialTheme.typography.titleMedium)
@@ -331,7 +333,7 @@ fun CloudShelfContent(cloud: CloudShelf, onUpload: () -> Unit, onDownload: (List
                         )
                     }
                     androidx.compose.material3.IconButton(onClick = { onDownload(listOf(book)) }, enabled = transfer == null) {
-                        Icon(androidx.compose.material.icons.Icons.Default.Download, "Скачать")
+                        Icon(Icons.Default.Download, "Скачать")
                     }
                 }
             }
