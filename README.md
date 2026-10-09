@@ -28,3 +28,7 @@
 Свежий APK после каждого изменения: https://github.com/binkoiv-afk/koreshok/releases/latest/download/koreshok.apk
 
 Локально: `./gradlew :app:assembleRelease` (нужен Android SDK). Модуль `core` с разбором форматов и логикой полки — чистый Kotlin, тесты: `./gradlew :core:test`.
+
+## Подпись
+
+Релизы подписаны постоянным ключом `app/signing/koreshok.jks`. Его создаёт CI при первой сборке после того, как владелец задаёт секрет `KEYSTORE_PASSWORD`; пароль знает только владелец. Без секрета сборка подписывается отладочным ключом, и такие версии нельзя поставить поверх друг друга.
