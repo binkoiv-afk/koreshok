@@ -1,6 +1,7 @@
 package app.koreshok
 
 import android.os.Bundle
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -16,6 +17,7 @@ import app.koreshok.core.model.BookFormat
 import app.koreshok.ui.home.HomeScreen
 import app.koreshok.ui.pages.PageSource
 import app.koreshok.ui.pages.PageReaderScreen
+import app.koreshok.ui.reader.PageKeys
 import app.koreshok.ui.reader.ReaderScreen
 import app.koreshok.ui.theme.KoreshokTheme
 
@@ -37,6 +39,8 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean = PageKeys.handle(event) || super.dispatchKeyEvent(event)
 }
 
 /** Opens a book in the reader that suits its format: reflowed text or fixed pages. */

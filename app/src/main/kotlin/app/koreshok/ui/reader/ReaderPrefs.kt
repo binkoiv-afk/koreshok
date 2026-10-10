@@ -2,6 +2,10 @@ package app.koreshok.ui.reader
 
 import android.content.Context
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
@@ -9,6 +13,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import app.koreshok.R
 
 enum class ReaderTheme(val label: String, val background: Color, val text: Color, val secondary: Color, val accent: Color) {
     DAY("День", Color(0xFFFBF8F2), Color(0xFF1F1B16), Color(0xFF8A8075), Color(0xFF8A4B1F)),
@@ -17,11 +22,20 @@ enum class ReaderTheme(val label: String, val background: Color, val text: Color
     BLACK("Чёрная", Color(0xFF000000), Color(0xFFB8B2A8), Color(0xFF6B665F), Color(0xFFD9A066)),
 }
 
-enum class ReaderFont(val label: String) {
-    SERIF("Антиква"),
-    SANS("Гротеск"),
-    MONO("Моно"),
+enum class ReaderFont(val label: String, val family: FontFamily) {
+    PT_SERIF("PT Serif", ptFamily(R.font.pt_serif_regular, R.font.pt_serif_bold, R.font.pt_serif_italic, R.font.pt_serif_bold_italic)),
+    PT_SANS("PT Sans", ptFamily(R.font.pt_sans_regular, R.font.pt_sans_bold, R.font.pt_sans_italic, R.font.pt_sans_bold_italic)),
+    SERIF("Антиква", FontFamily.Serif),
+    SANS("Гротеск", FontFamily.SansSerif),
+    MONO("Моно", FontFamily.Monospace),
 }
+
+private fun ptFamily(regular: Int, bold: Int, italic: Int, boldItalic: Int) = FontFamily(
+    Font(regular),
+    Font(bold, FontWeight.Bold),
+    Font(italic, style = FontStyle.Italic),
+    Font(boldItalic, FontWeight.Bold, FontStyle.Italic),
+)
 
 data class ReaderPrefs(
     val theme: ReaderTheme = ReaderTheme.DAY,
@@ -38,6 +52,13 @@ data class ReaderPrefs(
     val cropMargins: Boolean = true,
     /** PDF and comics: one page per screen with swipes, instead of a vertical strip. */
     val pagedPages: Boolean = false,
+    /** Screen brightness while reading, 0..1; below zero follows the system. */
+    val brightness: Float = -1f,
+    val keepScreenOn: Boolean = true,
+    /** Volume buttons turn pages. */
+    val volumeKeys: Boolean = true,
+    /** Clock and battery in the page footer. */
+    val showClock: Boolean = true,
 )
 
 private val Context.readerStore by preferencesDataStore("reader")
@@ -54,6 +75,10 @@ class ReaderSettings(private val context: Context) {
     private val scroll = booleanPreferencesKey("scroll")
     private val cropMargins = booleanPreferencesKey("cropMargins")
     private val pagedPages = booleanPreferencesKey("pagedPages")
+    private val brightness = floatPreferencesKey("brightness")
+    private val keepScreenOn = booleanPreferencesKey("keepScreenOn")
+    private val volumeKeys = booleanPreferencesKey("volumeKeys")
+    private val showClock = booleanPreferencesKey("showClock")
 
     val prefs: Flow<ReaderPrefs> = context.readerStore.data.map { p ->
         val defaults = ReaderPrefs()
@@ -69,6 +94,10 @@ class ReaderSettings(private val context: Context) {
             scroll = p[scroll] ?: defaults.scroll,
             cropMargins = p[cropMargins] ?: defaults.cropMargins,
             pagedPages = p[pagedPages] ?: defaults.pagedPages,
+            brightness = p[brightness] ?: defaults.brightness,
+            keepScreenOn = p[keepScreenOn] ?: defaults.keepScreenOn,
+            volumeKeys = p[volumeKeys] ?: defaults.volumeKeys,
+            showClock = p[showClock] ?: defaults.showClock,
         )
     }
 
@@ -85,6 +114,10 @@ class ReaderSettings(private val context: Context) {
             p[scroll] = value.scroll
             p[cropMargins] = value.cropMargins
             p[pagedPages] = value.pagedPages
+            p[brightness] = value.brightness
+            p[keepScreenOn] = value.keepScreenOn
+            p[volumeKeys] = value.volumeKeys
+            p[showClock] = value.showClock
         }
     }
 }

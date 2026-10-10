@@ -6,6 +6,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,14 +19,18 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.BrightnessHigh
+import androidx.compose.material.icons.filled.BrightnessLow
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -49,7 +55,7 @@ private val Margins = listOf(10f to "Узкие", 22f to "Обычные", 36f t
  * Typography settings. Every row is built from weighted segments, so nothing runs off the
  * edge even with the large system font this sheet inherits.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ReaderSettingsPanel(prefs: ReaderPrefs, update: ((ReaderPrefs) -> ReaderPrefs) -> Unit) {
     Column(
@@ -106,24 +112,13 @@ fun ReaderSettingsPanel(prefs: ReaderPrefs, update: ((ReaderPrefs) -> ReaderPref
         }
 
         Section("Шрифт") {
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                ReaderFont.entries.forEachIndexed { index, font ->
-                    SegmentedButton(
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ReaderFont.entries.forEach { font ->
+                    FilterChip(
                         selected = prefs.font == font,
                         onClick = { update { it.copy(font = font) } },
-                        shape = SegmentedButtonDefaults.itemShape(index, ReaderFont.entries.size),
-                        icon = {},
-                    ) {
-                        Text(
-                            font.label,
-                            maxLines = 1,
-                            fontFamily = when (font) {
-                                ReaderFont.SERIF -> FontFamily.Serif
-                                ReaderFont.SANS -> FontFamily.SansSerif
-                                ReaderFont.MONO -> FontFamily.Monospace
-                            },
-                        )
-                    }
+                        label = { Text(font.label, maxLines = 1, fontFamily = font.family, fontSize = 15.sp) },
+                    )
                 }
             }
             Spacer(Modifier.height(12.dp))
@@ -143,9 +138,32 @@ fun ReaderSettingsPanel(prefs: ReaderPrefs, update: ((ReaderPrefs) -> ReaderPref
 
         Section("Интервал") {
             Presets(Spacings, prefs.lineHeight) { value -> update { it.copy(lineHeight = value) } }
+            FineSlider(prefs.lineHeight, 1.0f..2.4f, steps = 13, text = "×%.1f".format(prefs.lineHeight)) { value ->
+                update { it.copy(lineHeight = value) }
+            }
         }
         Section("Поля") {
             Presets(Margins, prefs.margin) { value -> update { it.copy(margin = value) } }
+            FineSlider(prefs.margin, 0f..56f, steps = 13, text = "${prefs.margin.roundToInt()}") { value ->
+                update { it.copy(margin = value) }
+            }
+        }
+
+        Section("Яркость") {
+            val system = prefs.brightness < 0
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.BrightnessLow, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Slider(
+                    value = if (system) 0.5f else prefs.brightness,
+                    onValueChange = { value -> update { it.copy(brightness = value.coerceAtLeast(0.01f)) } },
+                    enabled = !system,
+                    modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                )
+                Icon(Icons.Default.BrightnessHigh, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            SwitchRow("Как в системе", "яркость телефона, без своей", system) { v ->
+                update { it.copy(brightness = if (v) -1f else 0.5f) }
+            }
         }
 
         Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.medium) {
@@ -153,6 +171,14 @@ fun ReaderSettingsPanel(prefs: ReaderPrefs, update: ((ReaderPrefs) -> ReaderPref
                 SwitchRow("По ширине", "ровный правый край", prefs.justify) { v -> update { it.copy(justify = v) } }
                 SwitchRow("Переносы", "по слогам, как в книге", prefs.hyphenate) { v -> update { it.copy(hyphenate = v) } }
                 SwitchRow("Красная строка", "отступ в начале абзаца", prefs.indent) { v -> update { it.copy(indent = v) } }
+            }
+        }
+
+        Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.medium) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                SwitchRow("Не гасить экран", "пока открыта книга", prefs.keepScreenOn) { v -> update { it.copy(keepScreenOn = v) } }
+                SwitchRow("Кнопки громкости", "листают страницы", prefs.volumeKeys) { v -> update { it.copy(volumeKeys = v) } }
+                SwitchRow("Часы и заряд", "внизу страницы", prefs.showClock) { v -> update { it.copy(showClock = v) } }
             }
         }
     }
@@ -181,6 +207,26 @@ private fun Presets(options: List<Pair<Float, String>>, current: Float, onPick: 
                 icon = {},
             ) { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center) }
         }
+    }
+}
+
+/** Exact value between the presets, for those who want 1.6 and not 1.45 or 1.7. */
+@Composable
+private fun FineSlider(value: Float, range: ClosedFloatingPointRange<Float>, steps: Int, text: String, onChange: (Float) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Slider(
+            value = value.coerceIn(range),
+            onValueChange = onChange,
+            valueRange = range,
+            steps = steps,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text,
+            style = MaterialTheme.typography.labelLarge,
+            textAlign = TextAlign.End,
+            modifier = Modifier.width(44.dp),
+        )
     }
 }
 

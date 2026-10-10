@@ -5,6 +5,8 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -98,6 +100,10 @@ internal fun ScrollReader(
     val next by remember { derivedStateOf { positionOf(listState.firstVisibleItemIndex + 1) } }
     val bookmarked = annotations.any { it.kind == AnnotationKind.BOOKMARK && it.isOnPage(current, next) }
     val viewportPx = remember { mutableStateOf(0) }
+
+    VolumeKeyPaging(layout.prefs.volumeKeys) { direction ->
+        scope.launch { listState.animateScrollBy(viewportPx.value * 0.85f * direction) }
+    }
 
     fun tap(yInViewport: Float) {
         val height = viewportPx.value.toFloat()
@@ -212,8 +218,16 @@ internal fun ScrollReader(
             }
         }
         val progress = document.progressOf(current)
-        Box(Modifier.fillMaxWidth().height(28.dp).padding(horizontal = 24.dp), contentAlignment = Alignment.CenterEnd) {
-            Text("${(progress * 100).roundToInt()}%", color = theme.secondary, fontSize = 12.sp)
+        Row(Modifier.fillMaxWidth().height(28.dp).padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.weight(1f))
+            if (layout.prefs.showClock) ClockAndBattery(theme)
+            Text(
+                "${(progress * 100).roundToInt()}%",
+                color = theme.secondary,
+                fontSize = 12.sp,
+                textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }

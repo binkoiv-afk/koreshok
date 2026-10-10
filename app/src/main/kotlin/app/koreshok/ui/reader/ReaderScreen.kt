@@ -168,6 +168,7 @@ private fun Reader(ready: ReaderState.Ready, prefs: ReaderPrefs, viewModel: Read
     var highlight by remember { mutableStateOf<HighlightDraft?>(null) }
 
     ImmersiveMode(hideBars = !showMenu)
+    ReaderWindow(prefs)
 
     val onLink: LinkHandler = remember(viewModel) {
         { target, isNote ->
@@ -457,6 +458,10 @@ private fun ChapterPager(
         it.block == block && offset >= it.start && offset < it.end
     }
 
+    VolumeKeyPaging(layout.prefs.volumeKeys) { direction ->
+        scope.launch { pagerState.animateScrollToPage((pagerState.currentPage + direction).coerceIn(0, count - 1)) }
+    }
+
     val pageIndex = (pagerState.currentPage - first).coerceIn(0, pages.lastIndex)
     val pageStart = pages[pageIndex].start
     val nextStart = pages.getOrNull(pageIndex + 1)?.start
@@ -530,19 +535,21 @@ private fun ChapterPager(
             right = "${(document.progressOf(pageStart) * 100).roundToInt()}%",
             theme = theme,
             heightPx = footerPx,
+            clock = layout.prefs.showClock,
         )
     }
 }
 
 @Composable
-private fun Footer(left: String, right: String, theme: ReaderTheme, heightPx: Int) {
+private fun Footer(left: String, right: String, theme: ReaderTheme, heightPx: Int, clock: Boolean) {
     val height = with(LocalDensity.current) { heightPx.toDp() }
     Row(
         Modifier.fillMaxWidth().height(height).padding(horizontal = 24.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(left, color = theme.secondary, fontSize = 12.sp, modifier = Modifier.weight(1f))
-        Text(right, color = theme.secondary, fontSize = 12.sp)
+        if (clock) ClockAndBattery(theme)
+        Text(right, color = theme.secondary, fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.End, modifier = Modifier.weight(1f))
     }
 }
 

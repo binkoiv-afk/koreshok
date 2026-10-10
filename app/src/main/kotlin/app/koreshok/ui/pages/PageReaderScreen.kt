@@ -16,6 +16,8 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.runtime.rememberUpdatedState
 import app.koreshok.ui.reader.ReaderPrefs
+import app.koreshok.ui.reader.ReaderWindow
+import app.koreshok.ui.reader.VolumeKeyPaging
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -158,6 +160,8 @@ private fun PageBook(book: PageBookState.Ready, prefs: ReaderPrefs, viewModel: P
         val index = target.coerceIn(0, source.pageCount - 1)
         scope.launch { if (paged) pagerState.scrollToPage(index) else listState.scrollToItem(index) }
     }
+    ReaderWindow(prefs)
+    VolumeKeyPaging(prefs.volumeKeys) { direction -> goTo(page + direction) }
     // Switching between strip and pages keeps the place.
     LaunchedEffect(paged) {
         if (paged) pagerState.scrollToPage(stripPage) else listState.scrollToItem(pagerState.currentPage)

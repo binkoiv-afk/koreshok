@@ -65,11 +65,7 @@ object BlockStyles {
         val emPx = prefs.fontSize * layout.density // sp == dp at font scale 1; the reader has its own size control
         fun em(value: Float) = (value * emPx).toInt()
 
-        val family = when (prefs.font) {
-            ReaderFont.SERIF -> FontFamily.Serif
-            ReaderFont.SANS -> FontFamily.SansSerif
-            ReaderFont.MONO -> FontFamily.Monospace
-        }
+        val family = prefs.font.family
         val base = TextStyle(
             color = theme.text,
             fontFamily = family,
