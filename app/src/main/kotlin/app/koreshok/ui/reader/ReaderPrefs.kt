@@ -59,6 +59,10 @@ data class ReaderPrefs(
     val volumeKeys: Boolean = true,
     /** Clock and battery in the page footer. */
     val showClock: Boolean = true,
+    /** Read-aloud voice: "piper:<key>", "system:<engine>:<voice>", or empty for the phone's default. */
+    val voice: String = "",
+    val speechRate: Float = 1f,
+    val speechPitch: Float = 1f,
 )
 
 private val Context.readerStore by preferencesDataStore("reader")
@@ -79,6 +83,9 @@ class ReaderSettings(private val context: Context) {
     private val keepScreenOn = booleanPreferencesKey("keepScreenOn")
     private val volumeKeys = booleanPreferencesKey("volumeKeys")
     private val showClock = booleanPreferencesKey("showClock")
+    private val voice = stringPreferencesKey("voice")
+    private val speechRate = floatPreferencesKey("speechRate")
+    private val speechPitch = floatPreferencesKey("speechPitch")
 
     val prefs: Flow<ReaderPrefs> = context.readerStore.data.map { p ->
         val defaults = ReaderPrefs()
@@ -98,6 +105,9 @@ class ReaderSettings(private val context: Context) {
             keepScreenOn = p[keepScreenOn] ?: defaults.keepScreenOn,
             volumeKeys = p[volumeKeys] ?: defaults.volumeKeys,
             showClock = p[showClock] ?: defaults.showClock,
+            voice = p[voice] ?: defaults.voice,
+            speechRate = p[speechRate] ?: defaults.speechRate,
+            speechPitch = p[speechPitch] ?: defaults.speechPitch,
         )
     }
 
@@ -118,6 +128,9 @@ class ReaderSettings(private val context: Context) {
             p[keepScreenOn] = value.keepScreenOn
             p[volumeKeys] = value.volumeKeys
             p[showClock] = value.showClock
+            p[voice] = value.voice
+            p[speechRate] = value.speechRate
+            p[speechPitch] = value.speechPitch
         }
     }
 }

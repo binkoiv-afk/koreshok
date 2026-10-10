@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import app.koreshok.core.document.Document
 import app.koreshok.core.document.ImageBlock
 import app.koreshok.core.document.Position
+import app.koreshok.core.document.Utterance
 import app.koreshok.core.document.TextBlock
 import app.koreshok.data.AnnotationEntity
 import app.koreshok.data.AnnotationKind
@@ -58,6 +59,7 @@ internal fun ScrollReader(
     layout: LayoutSpec,
     marginPx: Int,
     annotations: List<AnnotationEntity>,
+    speaking: Utterance?,
     onPositionShown: (Position) -> Unit,
     onToggleBookmark: (Position, Position) -> Unit,
     onLink: LinkHandler,
@@ -100,6 +102,15 @@ internal fun ScrollReader(
     val next by remember { derivedStateOf { positionOf(listState.firstVisibleItemIndex + 1) } }
     val bookmarked = annotations.any { it.kind == AnnotationKind.BOOKMARK && it.isOnPage(current, next) }
     val viewportPx = remember { mutableStateOf(0) }
+
+    // Reading aloud: the column follows the voice.
+    LaunchedEffect(speaking?.position) {
+        val target = speaking ?: return@LaunchedEffect
+        val index = indexOf(target.position)
+        val visible = listState.layoutInfo.visibleItemsInfo
+        val shown = visible.any { it.index == index } && visible.lastOrNull()?.index != index
+        if (!shown && !listState.isScrollInProgress) listState.animateScrollToItem(index)
+    }
 
     VolumeKeyPaging(layout.prefs.volumeKeys) { direction ->
         scope.launch { listState.animateScrollBy(viewportPx.value * 0.85f * direction) }
@@ -159,7 +170,11 @@ internal fun ScrollReader(
                         val highlights = annotations.filter {
                             it.kind == AnnotationKind.HIGHLIGHT && it.chapter == position.chapter && it.block == position.block
                         }
-                        val colored = highlights.map { (it.start until it.end) to highlightColor(it.color) }
+                        val colored = highlights.map { (it.start until it.end) to highlightColor(it.color) } +
+                            listOfNotNull(
+                                speaking?.takeIf { it.chapter == position.chapter && it.block == position.block }
+                                    ?.let { (it.start until it.end) to speakingColor(theme) },
+                            )
                         val spec = remember(block, layout, colored) { BlockStyles.spec(block, layout, onLink, colored) }
                         if (spec != null) {
                             var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }

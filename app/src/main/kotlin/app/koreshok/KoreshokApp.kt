@@ -1,6 +1,8 @@
 package app.koreshok
 
 import android.app.Application
+import app.koreshok.audio.ReadAloud
+import app.koreshok.audio.VoiceStore
 import app.koreshok.data.AppDatabase
 import app.koreshok.data.LibraryRepository
 import app.koreshok.data.ShelfSettings
@@ -19,5 +21,7 @@ class KoreshokApp : Application() {
     val catalogs by lazy { CatalogService(library) }
     val taste by lazy { TasteSettings(this) }
     val sync by lazy { SyncService(this, database, SyncSettings(this), library) }
+    val voices by lazy { VoiceStore(this) }
+    val readAloud by lazy { ReadAloud(this, library, readerSettings, voices) }
     val discover by lazy { DiscoverService(catalogs, taste, library) }
 }

@@ -24,6 +24,8 @@ android {
         targetSdk = 35
         versionCode = buildNumber
         versionName = "0.1.$buildNumber"
+        // Phones only: the speech engine ships native code for ARM.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
     signingConfigs {
@@ -85,6 +87,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.okhttp)
     implementation(libs.junrar)
+    implementation(libs.commons.compress)
+    // Offline neural speech (sherpa-onnx, Apache-2.0), fetched by the fetch-fonts workflow.
+    implementation(files("libs/sherpa-onnx.aar"))
     implementation(libs.play.services.auth)
 
     testImplementation(libs.junit)

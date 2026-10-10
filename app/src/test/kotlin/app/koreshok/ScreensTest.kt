@@ -3,6 +3,7 @@ package app.koreshok
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -152,8 +153,22 @@ class ScreensTest {
 
     @Test fun scrollReaderSepia() = snap("reader_scroll_sepia") { scrollPage(ReaderPrefs(scroll = true, theme = ReaderTheme.SEPIA)) }
 
+    @Test fun readAloud() = snap("reader_read_aloud") {
+        val prefs = ReaderPrefs(scroll = true, speechRate = 1.25f)
+        Box(Modifier.fillMaxSize()) {
+            scrollPage(prefs, speaking = app.koreshok.core.document.Utterance(0, 1, 0, 118, ""))
+            app.koreshok.ui.reader.ReadAloudBar(
+                state = app.koreshok.audio.ReadAloudState(bookUri = "x", title = "Мастер и Маргарита", playing = true, sleepAtChapterEnd = true),
+                prefs = prefs,
+                theme = prefs.theme,
+                onToggle = {}, onSkip = {}, onSpeed = {}, onSleep = {}, onSleepChapter = {}, onVoices = {}, onStop = {},
+                modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter).padding(12.dp).padding(bottom = 36.dp).fillMaxWidth(),
+            )
+        }
+    }
+
     @Composable
-    private fun scrollPage(prefs: ReaderPrefs) {
+    private fun scrollPage(prefs: ReaderPrefs, speaking: app.koreshok.core.document.Utterance? = null) {
         val density = 2.625f
         val margin = (prefs.margin * density).toInt()
         val paragraphs = listOf(
@@ -179,6 +194,7 @@ class ScreensTest {
                 layout = layout,
                 marginPx = margin,
                 annotations = emptyList(),
+                speaking = speaking,
                 onPositionShown = {},
                 onToggleBookmark = { _, _ -> },
                 onLink = { _, _ -> },

@@ -1,9 +1,14 @@
 package app.koreshok.ui.reader
 
+import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -52,6 +57,7 @@ import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.FormatSize
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SkipNext
@@ -109,12 +115,15 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import app.koreshok.KoreshokApp
 import app.koreshok.core.document.Document
+import app.koreshok.core.document.Utterance
 import app.koreshok.core.document.ImageBlock
 import app.koreshok.core.document.TextBlock
 import app.koreshok.data.AnnotationEntity
@@ -149,7 +158,7 @@ fun ReaderScreen(uri: String, onBack: () -> Unit) {
                 Spacer(Modifier.height(16.dp))
                 OutlinedButton(onClick = onBack) { Text("Назад") }
             }
-            ready != null && currentPrefs != null -> Reader(ready, currentPrefs, viewModel, onBack)
+            ready != null && currentPrefs != null -> Reader(uri, ready, currentPrefs, viewModel, onBack)
             else -> CircularProgressIndicator(Modifier.align(Alignment.Center), color = theme.accent)
         }
     }
@@ -157,7 +166,7 @@ fun ReaderScreen(uri: String, onBack: () -> Unit) {
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
-private fun Reader(ready: ReaderState.Ready, prefs: ReaderPrefs, viewModel: ReaderViewModel, onBack: () -> Unit) {
+private fun Reader(uri: String, ready: ReaderState.Ready, prefs: ReaderPrefs, viewModel: ReaderViewModel, onBack: () -> Unit) {
     val document = ready.document
     val theme = prefs.theme
     val location by viewModel.location.collectAsStateWithLifecycle()
@@ -170,6 +179,20 @@ private fun Reader(ready: ReaderState.Ready, prefs: ReaderPrefs, viewModel: Read
     var showAnnotations by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
+    var showVoices by remember { mutableStateOf(false) }
+    val readAloud = (context.applicationContext as KoreshokApp).readAloud
+    val aloud by readAloud.state.collectAsStateWithLifecycle()
+    val listening = aloud.bookUri == uri
+    val speaking = aloud.current.takeIf { listening }
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    fun listen() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        readAloud.start(uri, document.title, document, ready.language, location.position)
+    }
     var note by remember { mutableStateOf<String?>(null) }
     var highlight by remember { mutableStateOf<HighlightDraft?>(null) }
 
@@ -215,6 +238,7 @@ private fun Reader(ready: ReaderState.Ready, prefs: ReaderPrefs, viewModel: Read
                     layout = layout,
                     marginPx = marginPx,
                     annotations = annotations,
+                    speaking = speaking,
                     onPositionShown = viewModel::onPageShown,
                     onToggleBookmark = viewModel::toggleBookmark,
                     onLink = onLink,
@@ -246,6 +270,7 @@ private fun Reader(ready: ReaderState.Ready, prefs: ReaderPrefs, viewModel: Read
                             headerPx = headerPx,
                             footerPx = footerPx,
                             annotations = annotations,
+                            speaking = speaking,
                             viewModel = viewModel,
                             onLink = onLink,
                             onCenterTap = { showMenu = !showMenu },
@@ -266,6 +291,10 @@ private fun Reader(ready: ReaderState.Ready, prefs: ReaderPrefs, viewModel: Read
             onBack = onBack,
             onToc = { showToc = true },
             onSearch = { showSearch = true },
+            onListen = {
+                showMenu = false
+                listen()
+            },
             onAnnotations = { showAnnotations = true },
             onSettings = { showSettings = true },
             onSeek = viewModel::seek,
@@ -273,6 +302,36 @@ private fun Reader(ready: ReaderState.Ready, prefs: ReaderPrefs, viewModel: Read
             onNextChapter = viewModel::nextChapter,
             onReturn = viewModel::goBack,
             onDismiss = { showMenu = false },
+        )
+    }
+
+    if (listening) {
+        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 36.dp, start = 12.dp, end = 12.dp)) {
+            ReadAloudBar(
+                state = aloud,
+                prefs = prefs,
+                theme = theme,
+                onToggle = readAloud::toggle,
+                onSkip = readAloud::skip,
+                onSpeed = { rate ->
+                    viewModel.updatePrefs { it.copy(speechRate = rate) }
+                    readAloud.restart()
+                },
+                onSleep = readAloud::sleepIn,
+                onSleepChapter = readAloud::sleepAtChapterEnd,
+                onVoices = { showVoices = true },
+                onStop = readAloud::stop,
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+            )
+        }
+    }
+    if (showVoices) {
+        VoiceSheet(
+            readAloud = readAloud,
+            prefs = prefs,
+            language = ready.language,
+            update = { transform -> viewModel.updatePrefs(transform) },
+            onDismiss = { showVoices = false },
         )
     }
 
@@ -431,6 +490,7 @@ private fun ChapterPager(
     headerPx: Int,
     footerPx: Int,
     annotations: List<AnnotationEntity>,
+    speaking: Utterance?,
     viewModel: ReaderViewModel,
     onLink: LinkHandler,
     onCenterTap: () -> Unit,
@@ -476,6 +536,17 @@ private fun ChapterPager(
 
     fun highlightAt(block: Int, offset: Int) = chapterHighlights.firstOrNull {
         it.block == block && offset >= it.start && offset < it.end
+    }
+
+    // Reading aloud: the page follows the voice.
+    LaunchedEffect(speaking?.position) {
+        val target = speaking ?: return@LaunchedEffect
+        if (target.chapter != chapter) {
+            viewModel.goTo(target.position)
+            return@LaunchedEffect
+        }
+        val page = first + pages.indexOfLast { it.start <= target.position }.coerceAtLeast(0)
+        if (page != pagerState.currentPage && !pagerState.isScrollInProgress) pagerState.animateScrollToPage(page)
     }
 
     VolumeKeyPaging(layout.prefs.volumeKeys) { direction ->
@@ -547,7 +618,7 @@ private fun ChapterPager(
             Box(Modifier.fillMaxSize().padding(horizontal = with(density) { marginPx.toDp() })) {
                 if (page != null) {
                     val pageHits = remember(page) { PageHits().also { hits[index] = it } }
-                    PageView(document, chapter, page, layout, chapterHighlights, pageHits, onLink)
+                    PageView(document, chapter, page, layout, chapterHighlights, speaking, pageHits, onLink)
                 }
             }
         }
@@ -581,6 +652,7 @@ private fun PageView(
     page: Page,
     layout: LayoutSpec,
     highlights: List<AnnotationEntity>,
+    speaking: Utterance?,
     hits: PageHits,
     onLink: LinkHandler,
 ) {
@@ -619,7 +691,11 @@ private fun PageView(
                     } else {
                         val blockHighlights = highlights
                             .filter { it.block == slice.block }
-                            .map { (it.start until it.end) to highlightColor(it.color) }
+                            .map { (it.start until it.end) to highlightColor(it.color) } +
+                            listOfNotNull(
+                                speaking?.takeIf { it.chapter == chapter && it.block == slice.block }
+                                    ?.let { (it.start until it.end) to speakingColor(layout.prefs.theme) },
+                            )
                         val spec = remember(block, layout, blockHighlights) {
                             BlockStyles.spec(block, layout, onLink, blockHighlights)
                         }
@@ -667,6 +743,7 @@ private fun ReaderMenu(
     onBack: () -> Unit,
     onToc: () -> Unit,
     onSearch: () -> Unit,
+    onListen: () -> Unit,
     onAnnotations: () -> Unit,
     onSettings: () -> Unit,
     onSeek: (Float) -> Unit,
@@ -745,6 +822,7 @@ private fun ReaderMenu(
                 Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                     MenuAction(Icons.AutoMirrored.Filled.List, "Оглавление", onToc)
                     MenuAction(Icons.Default.Search, "Поиск", onSearch)
+                    MenuAction(Icons.Default.Headphones, "Слушать", onListen)
                     MenuAction(Icons.Default.Bookmarks, "Закладки", onAnnotations)
                     MenuAction(Icons.Default.FormatSize, "Оформление", onSettings)
                 }
@@ -759,7 +837,7 @@ private fun MenuAction(icon: androidx.compose.ui.graphics.vector.ImageVector, la
         Modifier
             .clip(MaterialTheme.shapes.medium)
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .padding(horizontal = 8.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(icon, null)
