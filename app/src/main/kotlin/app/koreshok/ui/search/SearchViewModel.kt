@@ -51,8 +51,8 @@ class SearchViewModel(
     val submitted: StateFlow<String> = _submitted.asStateFlow()
 
     val catalogs: StateFlow<List<CatalogLink>> = db.catalogs().observeAll()
-        .map { saved -> OpdsPresets.all.map { CatalogLink(null, it.title, it.url) } + saved.map { CatalogLink(it.id, it.title, it.url) } }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, OpdsPresets.all.map { CatalogLink(null, it.title, it.url) })
+        .map { saved -> OpdsPresets.all.filter { it.searchable }.map { CatalogLink(null, it.title, it.url) } + saved.map { CatalogLink(it.id, it.title, it.url) } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, OpdsPresets.all.filter { it.searchable }.map { CatalogLink(null, it.title, it.url) })
 
     /** Catalog URLs switched off for search by the user. */
     private val _disabled = MutableStateFlow<Set<String>>(emptySet())

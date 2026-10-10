@@ -39,6 +39,20 @@ class OpdsParserTest {
     private val parsed = OpdsParser.parse(feed, "http://flibusta.is/opds/genre/12")
 
     @Test
+    fun comicsOfferPdfFirst() {
+        val comic = """
+            <feed xmlns="http://www.w3.org/2005/Atom"><title>x</title>
+              <entry><id>c</id><title>Маус</title>
+                <category term="Комиксы" label="Комиксы"/>
+                <link href="/b/1/fb2" rel="http://opds-spec.org/acquisition/open-access" type="application/fb2+zip"/>
+                <link href="/b/1/pdf" rel="http://opds-spec.org/acquisition/open-access" type="application/pdf"/>
+              </entry>
+            </feed>
+        """.trimIndent().toByteArray()
+        assertEquals("PDF", OpdsParser.parse(comic, "http://x/").entries.single().downloads.first().label)
+    }
+
+    @Test
     fun readsYearAndGenres() {
         val book = parsed.entries[1]
         assertEquals(1972, book.year)

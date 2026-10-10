@@ -77,6 +77,11 @@ object OpdsFormats {
     /** Formats Koreshok shows first, best reading experience first. */
     val preference = listOf("EPUB", "FB2", "AZW3", "MOBI", "PDF", "DJVU", "DOCX", "RTF", "TXT", "CBZ")
 
+    /** Comics are pictures: page-exact formats keep the drawings, text formats lose them. */
+    val comicPreference = listOf("CBZ", "PDF", "EPUB", "FB2", "DJVU", "AZW3", "MOBI", "DOCX", "RTF", "TXT")
+
+    fun isComic(categories: List<String>) = categories.any { it.contains("комикс", ignoreCase = true) || it.contains("манга", ignoreCase = true) || it.contains("comic", ignoreCase = true) }
+
     private fun base(mime: String) = mime.substringBefore(';').trim().lowercase()
 }
 
@@ -127,7 +132,9 @@ object OpdsParser {
                 OpdsDownload(resolve(baseUrl, href), link.attr("type").orEmpty())
             }
             .distinctBy { it.label }
-            .sortedBy { OpdsFormats.preference.indexOf(it.label).let { i -> if (i < 0) 99 else i } }
+        val categories = entry.children("category").mapNotNull { (it.attr("label") ?: it.attr("term"))?.takeIf { label -> label.isNotBlank() } }
+        val order = if (OpdsFormats.isComic(categories)) OpdsFormats.comicPreference else OpdsFormats.preference
+        val sorted = downloads.sortedBy { order.indexOf(it.label).let { i -> if (i < 0) 99 else i } }
         val navigation = links.firstOrNull { link ->
             val type = link.attr("type").orEmpty()
             val rel = link.attr("rel").orEmpty()
@@ -144,10 +151,10 @@ object OpdsParser {
             authors = authors,
             summary = summary?.let(::stripTags),
             coverUrl = cover?.attr("href")?.let { resolve(baseUrl, it) },
-            navigationUrl = if (downloads.isEmpty()) navigation?.attr("href")?.let { resolve(baseUrl, it) } else null,
-            downloads = downloads,
+            navigationUrl = if (sorted.isEmpty()) navigation?.attr("href")?.let { resolve(baseUrl, it) } else null,
+            downloads = sorted,
             issued = entry.child("issued")?.text?.trim()?.takeIf { it.isNotEmpty() },
-            categories = entry.children("category").mapNotNull { (it.attr("label") ?: it.attr("term"))?.takeIf { label -> label.isNotBlank() } },
+            categories = categories,
         )
     }
 
@@ -171,13 +178,20 @@ object OpdsParser {
 
 /** Catalogs offered out of the box. */
 object OpdsPresets {
-    data class Preset(val title: String, val url: String, val description: String)
+    /** [searchable]: part of the global search; off for presets that are a slice of another catalog. */
+    data class Preset(val title: String, val url: String, val description: String, val searchable: Boolean = true)
 
     val all = listOf(
         Preset("Флибуста", "http://flibusta.is/opds", "Самая большая русская библиотека: художественная и не только"),
         Preset("Либрусек", "http://lib.rus.ec/opds", "Старейшая русская библиотека, много редкого"),
         Preset("Coollib", "https://coollib.net/opds", "Русские книги, удобные подборки по сериям"),
         Preset("Мир фантастики", "https://www.fantasy-worlds.org/opds/", "Фантастика и фэнтези, авторы и циклы"),
+        Preset(
+            "Комиксы и манга",
+            "http://flibusta.is/opds/genres/%D0%9F%D1%80%D0%BE%D1%87%D0%B5%D0%B5/210",
+            "Графические романы, манга и комиксы из Флибусты, самые читаемые сверху",
+            searchable = false,
+        ),
         Preset("Project Gutenberg", "https://m.gutenberg.org/ebooks.opds/", "70 000 классических книг на английском и других языках"),
     )
 
