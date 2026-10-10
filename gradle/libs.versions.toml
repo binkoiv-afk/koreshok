@@ -15,6 +15,7 @@ junit = "4.13.2"
 jsoup = "1.18.3"
 paparazzi = "1.3.5"
 okhttp = "4.12.0"
+junrar = "7.5.5"
 playServicesAuth = "21.2.0"
 
 [libraries]
@@ -38,6 +39,7 @@ kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-cor
 jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
+junrar = { group = "com.github.junrar", name = "junrar", version.ref = "junrar" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 
 [plugins]

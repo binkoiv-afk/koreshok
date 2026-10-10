@@ -36,12 +36,17 @@ interface PageSource : AutoCloseable {
     suspend fun render(index: Int, width: Int, crop: Boolean = false): Bitmap
 
     companion object {
-        val formats = setOf(BookFormat.PDF, BookFormat.CBZ)
+        val formats = setOf(BookFormat.PDF, BookFormat.CBZ, BookFormat.CBR)
 
         suspend fun open(context: Context, uri: String, format: BookFormat): PageSource = withContext(Dispatchers.IO) {
             when (format) {
                 BookFormat.PDF -> PdfSource(openDescriptor(context, uri))
                 BookFormat.CBZ -> CbzSource(localCopy(context, uri))
+                BookFormat.CBR -> {
+                    val file = localCopy(context, uri)
+                    // Plenty of .cbr files are zip archives with the wrong extension.
+                    if (isZip(file)) CbzSource(file) else FolderSource(unrar(file))
+                }
                 else -> throw UnsupportedOperationException("$format не листается постранично")
             }
         }
@@ -64,6 +69,29 @@ interface PageSource : AutoCloseable {
             }
         }
 
+        private fun isZip(file: File) = file.inputStream().use { input ->
+            val head = ByteArray(2)
+            input.read(head) == 2 && head[0] == 'P'.code.toByte() && head[1] == 'K'.code.toByte()
+        }
+
+        /** RAR has no random access worth the name; the pages are unpacked once next to the copy. */
+        private fun unrar(file: File): File {
+            val dir = File(file.parentFile, file.name + ".pages")
+            val done = File(dir, ".done")
+            if (!done.exists()) {
+                dir.deleteRecursively()
+                dir.mkdirs()
+                try {
+                    com.github.junrar.Junrar.extract(file, dir)
+                } catch (e: Exception) {
+                    dir.deleteRecursively()
+                    throw java.io.IOException("Не удалось распаковать CBR: ${e.message ?: "архив повреждён или RAR5"}", e)
+                }
+                done.createNewFile()
+            }
+            return dir
+        }
+
         /** ZipFile needs random access, which a content URI cannot give, so archives are copied once. */
         private fun localCopy(context: Context, uri: String): File {
             val parsed = Uri.parse(uri)
@@ -73,7 +101,7 @@ interface PageSource : AutoCloseable {
             val file = File(dir, name)
             if (!file.exists()) {
                 // Keep only the most recent few archives around.
-                dir.listFiles()?.sortedByDescending { it.lastModified() }?.drop(3)?.forEach { it.delete() }
+                dir.listFiles()?.sortedByDescending { it.lastModified() }?.drop(6)?.forEach { it.deleteRecursively() }
                 val partial = File(dir, "$name.part")
                 context.contentResolver.openInputStream(parsed)?.use { input ->
                     partial.outputStream().use { input.copyTo(it) }
@@ -183,6 +211,33 @@ private class PdfSource(private val descriptor: ParcelFileDescriptor) : PageSour
     }
 }
 
+/** Pages already unpacked into a folder (from a CBR). */
+private class FolderSource(dir: File) : PageSource {
+    private val pages = dir.walkTopDown()
+        .filter { it.isFile && it.extension.lowercase() in CbzSource.IMAGE_EXTENSIONS && !it.path.contains("__MACOSX") }
+        .sortedWith { a, b -> CbzSource.naturalCompare(a.relativeTo(dir).path, b.relativeTo(dir).path) }
+        .toList()
+    private val aspects = FloatArray(pages.size) { 0f }
+
+    override val pageCount: Int = pages.size
+    override val isPaper = false
+
+    override fun aspect(index: Int): Float = aspects[index].takeIf { it > 0f } ?: aspects.firstOrNull { it > 0f } ?: 1.4f
+
+    override suspend fun render(index: Int, width: Int, crop: Boolean): Bitmap = withContext(Dispatchers.IO) {
+        val path = pages[index].path
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }.also { BitmapFactory.decodeFile(path, it) }
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= width) sample *= 2
+        val bitmap = BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })
+            ?: error("Не удалось прочитать страницу ${index + 1}")
+        aspects[index] = bitmap.height.toFloat() / bitmap.width
+        bitmap
+    }
+
+    override fun close() = Unit
+}
+
 private class CbzSource(file: File) : PageSource {
     private val zip = ZipFile(file)
     private val pages = zip.entries().asSequence()
@@ -220,7 +275,7 @@ private class CbzSource(file: File) : PageSource {
     override fun close() = zip.close()
 
     companion object {
-        private val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp")
+        val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp")
 
         /** "page2" before "page10". */
         fun naturalCompare(a: String, b: String): Int {
