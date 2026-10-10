@@ -1,0 +1,37 @@
+name: Fetch fonts
+
+# One-off: puts open-licence reading fonts (OFL) into app resources and commits them,
+# because the development container cannot reach GitHub's raw files.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fonts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download
+        run: |
+          set -e
+          mkdir -p app/src/main/res/font
+          base=https://github.com/google/fonts/raw/main/ofl
+          get() { curl -fsSL -o "app/src/main/res/font/$2" "$base/$1"; }
+          get ptserif/PT_Serif-Web-Regular.ttf pt_serif_regular.ttf
+          get ptserif/PT_Serif-Web-Bold.ttf pt_serif_bold.ttf
+          get ptserif/PT_Serif-Web-Italic.ttf pt_serif_italic.ttf
+          get ptserif/PT_Serif-Web-BoldItalic.ttf pt_serif_bold_italic.ttf
+          get ptsans/PT_Sans-Web-Regular.ttf pt_sans_regular.ttf
+          get ptsans/PT_Sans-Web-Bold.ttf pt_sans_bold.ttf
+          get ptsans/PT_Sans-Web-Italic.ttf pt_sans_italic.ttf
+          get ptsans/PT_Sans-Web-BoldItalic.ttf pt_sans_bold_italic.ttf
+          ls -la app/src/main/res/font
+      - name: Commit
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add app/src/main/res/font
+          git commit -m "Fonts: PT Serif and PT Sans (OFL)" || exit 0
+          git push

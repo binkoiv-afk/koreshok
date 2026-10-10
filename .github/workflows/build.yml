@@ -3,6 +3,10 @@ name: Build
 on:
   push:
     branches: [main]
+    # Helper workflows alone change nothing in the app.
+    paths-ignore:
+      - .github/workflows/fetch-fonts.yml
+      - .github/workflows/probe-catalogs.yml
   pull_request:
   workflow_dispatch:
 
