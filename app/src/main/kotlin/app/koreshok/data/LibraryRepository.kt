@@ -3,6 +3,7 @@ package app.koreshok.data
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
 import app.koreshok.core.format.EpubMetadataParser
 import app.koreshok.core.format.Fb2MetadataParser
@@ -80,57 +81,85 @@ class LibraryRepository(
     /** Adds a downloaded file to the library and returns its entry. */
     suspend fun importDownloaded(file: File): BookEntity? = withContext(Dispatchers.IO) {
         val format = BookFormat.fromFileName(file.name) ?: return@withContext null
-        val document = DocumentFile.fromFile(file)
-        runCatching { index(DOWNLOADS, document, format) }
-        db.books().get(document.uri.toString())
+        val found = FoundFile(Uri.fromFile(file), file.name, file.length(), file.lastModified(), format)
+        runCatching { index(DOWNLOADS, found) }
+        db.books().get(found.uri.toString())
     }
 
     suspend fun rescanAll() {
         for (folder in db.folders().all()) rescan(folder.uri)
     }
 
-    /** Adds new and changed books in a folder and forgets files that are gone. Unchanged files are skipped. */
+    /**
+     * Adds new and changed books in a folder and forgets files that are gone. Unchanged files are
+     * skipped, and the progress banner only shows when there is actually something to read.
+     */
     suspend fun rescan(folderUri: String) = withContext(Dispatchers.IO) {
-        val root = DocumentFile.fromTreeUri(context, Uri.parse(folderUri)) ?: return@withContext
-        val folderName = root.name.orEmpty()
-        _scan.value = ScanProgress(folderName, 0, 0)
+        val treeUri = Uri.parse(folderUri)
+        val folderName = DocumentFile.fromTreeUri(context, treeUri)?.name.orEmpty()
         try {
-            val files = mutableListOf<Pair<DocumentFile, BookFormat>>()
-            collect(root, files)
-            _scan.value = ScanProgress(folderName, files.size, 0)
+            val files = mutableListOf<FoundFile>()
+            collect(treeUri, DocumentsContract.getTreeDocumentId(treeUri), files)
 
             val known = db.books().stamps(folderUri).associateBy { it.uri }
-            val seen = HashSet<String>()
-            files.forEachIndexed { index, (file, format) ->
-                val uri = file.uri.toString()
-                seen += uri
-                val stamp = known[uri]
-                if (stamp == null || stamp.sizeBytes != file.length() || stamp.modifiedAt != file.lastModified()) {
-                    runCatching { index(folderUri, file, format) }
-                }
-                _scan.value = ScanProgress(folderName, files.size, index + 1)
+            val changed = files.filter { file ->
+                val stamp = known[file.uri.toString()]
+                stamp == null || stamp.sizeBytes != file.size || stamp.modifiedAt != file.modified
             }
-            val gone = known.keys - seen
+            if (changed.isNotEmpty()) _scan.value = ScanProgress(folderName, changed.size, 0)
+            changed.forEachIndexed { index, file ->
+                runCatching { index(folderUri, file) }
+                _scan.value = ScanProgress(folderName, changed.size, index + 1)
+            }
+            val gone = known.keys - files.map { it.uri.toString() }.toSet()
             if (gone.isNotEmpty()) db.books().delete(gone.toList())
         } finally {
             _scan.value = null
         }
     }
 
-    private fun collect(dir: DocumentFile, out: MutableList<Pair<DocumentFile, BookFormat>>) {
-        for (child in dir.listFiles()) {
-            if (child.isDirectory) {
-                collect(child, out)
-            } else {
-                val format = child.name?.let(BookFormat::fromFileName) ?: continue
-                out += child to format
+    /** A book file as the folder listing describes it. */
+    private data class FoundFile(val uri: Uri, val name: String, val size: Long, val modified: Long, val format: BookFormat)
+
+    /**
+     * Lists a folder tree with one query per folder. DocumentFile asks the provider again for
+     * every name, size and date, which made a big library take seconds on each launch.
+     */
+    private fun collect(treeUri: Uri, documentId: String, out: MutableList<FoundFile>) {
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, documentId)
+        val columns = arrayOf(
+            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            DocumentsContract.Document.COLUMN_MIME_TYPE,
+            DocumentsContract.Document.COLUMN_SIZE,
+            DocumentsContract.Document.COLUMN_LAST_MODIFIED,
+        )
+        val folders = mutableListOf<String>()
+        context.contentResolver.query(children, columns, null, null, null)?.use { cursor ->
+            while (cursor.moveToNext()) {
+                val id = cursor.getString(0) ?: continue
+                val name = cursor.getString(1).orEmpty()
+                if (cursor.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR) {
+                    folders += id
+                } else {
+                    val format = BookFormat.fromFileName(name) ?: continue
+                    out += FoundFile(
+                        uri = DocumentsContract.buildDocumentUriUsingTree(treeUri, id),
+                        name = name,
+                        size = if (cursor.isNull(3)) 0 else cursor.getLong(3),
+                        modified = if (cursor.isNull(4)) 0 else cursor.getLong(4),
+                        format = format,
+                    )
+                }
             }
         }
+        folders.forEach { collect(treeUri, it, out) }
     }
 
-    private suspend fun index(folderUri: String, file: DocumentFile, format: BookFormat) {
+    private suspend fun index(folderUri: String, file: FoundFile) {
+        val format = file.format
         val uri = file.uri.toString()
-        val fileName = file.name.orEmpty()
+        val fileName = file.name
         val previous = db.books().get(uri)
         val fallbackTitle = format.extensions
             .firstOrNull { fileName.lowercase().endsWith(".$it") }
@@ -149,8 +178,8 @@ class LibraryRepository(
                 uri = uri,
                 folderUri = folderUri,
                 fileName = fileName,
-                sizeBytes = file.length(),
-                modifiedAt = file.lastModified(),
+                sizeBytes = file.size,
+                modifiedAt = file.modified,
                 format = format.name,
                 title = meta.title,
                 authors = meta.authors.joinToString(", ") { it.displayName },
@@ -171,7 +200,7 @@ class LibraryRepository(
         )
     }
 
-    private fun readMetadata(file: DocumentFile, format: BookFormat, fallbackTitle: String): BookMetadata {
+    private fun readMetadata(file: FoundFile, format: BookFormat, fallbackTitle: String): BookMetadata {
         val parser: ((ByteArray, String) -> BookMetadata)? = when (format) {
             BookFormat.EPUB -> EpubMetadataParser::parse
             BookFormat.FB2 -> Fb2MetadataParser::parse
@@ -179,7 +208,7 @@ class LibraryRepository(
             // Other formats get their metadata once their rendering engines land.
             else -> null
         }
-        if (parser == null || file.length() > MAX_PARSE_BYTES) return BookMetadata(title = fallbackTitle)
+        if (parser == null || file.size > MAX_PARSE_BYTES) return BookMetadata(title = fallbackTitle)
         val bytes = context.contentResolver.openInputStream(file.uri)?.use { it.readBytes() }
             ?: return BookMetadata(title = fallbackTitle)
         return runCatching { parser(bytes, fallbackTitle) }.getOrElse { BookMetadata(title = fallbackTitle) }
