@@ -85,6 +85,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -711,8 +712,29 @@ private fun ReaderMenu(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(horizontal = 12.dp),
                 )
+                // Labelled, not just icons up top: this is where people look for fonts and themes.
+                Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    MenuAction(Icons.AutoMirrored.Filled.List, "Оглавление", onToc)
+                    MenuAction(Icons.Default.Bookmarks, "Закладки", onAnnotations)
+                    MenuAction(Icons.Default.FormatSize, "Оформление", onSettings)
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun MenuAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+    Column(
+        Modifier
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(icon, null)
+        Spacer(Modifier.height(2.dp))
+        Text(label, style = MaterialTheme.typography.labelMedium)
     }
 }
 

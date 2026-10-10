@@ -34,6 +34,10 @@ import kotlinx.coroutines.launch
 import android.app.Activity
 import androidx.activity.result.ActivityResult
 import app.koreshok.sync.CloudShelfSheet
+import app.koreshok.ui.reader.ReaderPrefs
+import app.koreshok.ui.reader.ReaderSettingsPanel
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ExperimentalMaterial3Api
 import app.koreshok.sync.SyncCard
 import app.koreshok.sync.signInToGoogle
 import kotlinx.coroutines.CompletableDeferred
@@ -69,6 +73,7 @@ enum class HomeTab(val label: String, val icon: ImageVector, val selectedIcon: I
     MORE("Ещё", Icons.Outlined.MoreHoriz, Icons.Filled.MoreHoriz),
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(onRead: (String) -> Unit) {
     val context = LocalContext.current
@@ -93,6 +98,7 @@ fun HomeScreen(onRead: (String) -> Unit) {
     val syncStatus by app.sync.status.collectAsStateWithLifecycle()
     var syncSetup by rememberSaveable { mutableStateOf(false) }
     var cloudOpen by rememberSaveable { mutableStateOf(false) }
+    var readingSettings by rememberSaveable { mutableStateOf(false) }
     val cloud by app.sync.cloud.collectAsStateWithLifecycle()
     val googleAnswer = remember { mutableStateOf<CompletableDeferred<ActivityResult>?>(null) }
     val googleScreen = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) {
@@ -176,6 +182,7 @@ fun HomeScreen(onRead: (String) -> Unit) {
                     onRescan = library::rescan,
                     onCheckUpdate = { library.checkForUpdate() },
                     onUpdate = { library.downloadUpdate(context) },
+                    onReading = { readingSettings = true },
                     sync = {
                         SyncCard(
                             prefs = syncPrefs,
@@ -218,6 +225,12 @@ fun HomeScreen(onRead: (String) -> Unit) {
             },
             onDismiss = { syncSetup = false },
         )
+    }
+    if (readingSettings) {
+        val prefs by app.readerSettings.prefs.collectAsStateWithLifecycle(initialValue = ReaderPrefs())
+        ModalBottomSheet(onDismissRequest = { readingSettings = false }) {
+            ReaderSettingsPanel(prefs) { transform -> scope.launch { app.readerSettings.save(transform(prefs)) } }
+        }
     }
     if (cloudOpen) {
         CloudShelfSheet(cloud, onUpload = app.sync::uploadShelf, onDownload = app.sync::download, onDismiss = { cloudOpen = false })

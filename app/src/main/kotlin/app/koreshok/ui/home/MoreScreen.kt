@@ -1,5 +1,7 @@
 package app.koreshok.ui.home
 
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -58,6 +60,7 @@ fun MoreContent(
     onCheckUpdate: () -> Unit,
     onUpdate: () -> Unit,
     sync: @Composable () -> Unit = {},
+    onReading: () -> Unit = {},
 ) {
     Column(
         Modifier
@@ -106,6 +109,27 @@ fun MoreContent(
                     Spacer(Modifier.width(6.dp))
                     Text("Обновить")
                 }
+            }
+        }
+
+        Surface(
+            onClick = onReading,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            shape = MaterialTheme.shapes.large,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.FormatSize, null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Оформление чтения", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "Шрифт, размер, тема, листание или прокрутка. В книге — касание по центру страницы",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 
