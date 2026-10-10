@@ -183,3 +183,24 @@ class NewFormatsTest {
         assertTrue(BookSearch.search(doc, "x").isEmpty())
     }
 }
+
+class SpeechTest {
+    @Test
+    fun sentencesFromPositionWithoutNoteMarks() {
+        val doc = Document(
+            "t",
+            listOf(
+                Chapter("Глава", listOf(
+                    TextBlock(BlockKind.HEADING, "Глава", level = 1),
+                    TextBlock(BlockKind.PARAGRAPH, "Первое предложение. Второе1 предложение! Третье?", spans = listOf(Span(26, 27, SpanStyle.Link("n1", isNote = true)))),
+                )),
+                Chapter(null, listOf(ImageBlock("x"), TextBlock(BlockKind.PARAGRAPH, "Дальше."))),
+            ),
+            emptyList(), emptyMap(), emptyMap(),
+        )
+        val all = Speech.utterances(doc, Position(0, 1, 22), java.util.Locale("ru")).toList()
+        assertEquals(listOf("Второе предложение!", "Третье?", "Дальше."), all.map { it.spoken })
+        assertEquals(Position(0, 1, 20), all[0].position)
+        assertEquals(Position(1, 1, 0), all[2].position)
+    }
+}

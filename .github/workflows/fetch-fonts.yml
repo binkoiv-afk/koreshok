@@ -28,10 +28,19 @@ jobs:
           get ptsans/PT_Sans-Web-Italic.ttf pt_sans_italic.ttf
           get ptsans/PT_Sans-Web-BoldItalic.ttf pt_sans_bold_italic.ttf
           ls -la app/src/main/res/font
+      - name: Speech engine
+        run: |
+          set -e
+          # sherpa-onnx (Apache-2.0): offline neural voices. Only the phone ABIs are kept.
+          mkdir -p app/libs
+          curl -fsSL -o app/libs/sherpa-onnx.aar https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar
+          unzip -l app/libs/sherpa-onnx.aar
+          zip -d app/libs/sherpa-onnx.aar 'jni/x86/*' 'jni/x86_64/*' || true
+          ls -la app/libs
       - name: Commit
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@users.noreply.github.com"
-          git add app/src/main/res/font
-          git commit -m "Fonts: PT Serif and PT Sans (OFL)" || exit 0
+          git add app/src/main/res/font app/libs
+          git commit -m "Fonts and the offline speech engine" || exit 0
           git push
