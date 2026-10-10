@@ -133,7 +133,7 @@ object EpubDocumentParser {
         return if (fragment.isEmpty()) file else "$file#$fragment"
     }
 
-    private class HtmlWalker(
+    internal class HtmlWalker(
         private val path: String,
         private val chapterIndex: Int,
         private val anchors: MutableMap<String, Position>,

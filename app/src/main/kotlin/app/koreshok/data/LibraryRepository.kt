@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
+import app.koreshok.core.document.DocxDocumentParser
+import app.koreshok.core.document.MobiDocumentParser
 import androidx.documentfile.provider.DocumentFile
 import app.koreshok.core.format.EpubMetadataParser
 import app.koreshok.core.format.Fb2MetadataParser
@@ -205,6 +207,8 @@ class LibraryRepository(
             BookFormat.EPUB -> EpubMetadataParser::parse
             BookFormat.FB2 -> Fb2MetadataParser::parse
             BookFormat.FB2_ZIP -> Fb2MetadataParser::parseZipped
+            BookFormat.MOBI -> MobiDocumentParser::metadata
+            BookFormat.DOCX -> DocxDocumentParser::metadata
             // Other formats get their metadata once their rendering engines land.
             else -> null
         }

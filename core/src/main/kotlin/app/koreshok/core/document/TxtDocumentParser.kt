@@ -11,7 +11,7 @@ import java.nio.charset.CodingErrorAction
  * the file has them, otherwise on every line; lines like "Глава 3" start new chapters.
  */
 object TxtDocumentParser {
-    private val chapterHeading = Regex(
+    internal val chapterHeading = Regex(
         """^\s*(глава|часть|книга|пролог|эпилог|chapter|part|book|prologue|epilogue)(?![\p{L}]).{0,60}$""",
         RegexOption.IGNORE_CASE,
     )

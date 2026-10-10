@@ -29,9 +29,25 @@ data class HighlightDraft(
     val text: String,
     val color: Int = 0,
     val note: String = "",
+    /** The word under the finger, for the dictionary and translation. */
+    val word: String? = null,
 )
 
 fun AnnotationEntity.toDraft() = HighlightDraft(id, chapter, block, start, end, text, color, note.orEmpty())
+
+/** The word around [offset], letters and inner hyphens or apostrophes; null on punctuation. */
+fun wordAt(text: String, offset: Int): String? {
+    if (text.isEmpty()) return null
+    fun part(c: Char) = c.isLetterOrDigit() || c == '-' || c == '\'' || c == '’'
+    var at = offset.coerceIn(0, text.length - 1)
+    if (!text[at].isLetterOrDigit() && at > 0 && text[at - 1].isLetterOrDigit()) at--
+    if (!text[at].isLetterOrDigit()) return null
+    var start = at
+    var end = at + 1
+    while (start > 0 && part(text[start - 1])) start--
+    while (end < text.length && part(text[end])) end++
+    return text.substring(start, end).trim('-', '\'', '’').takeIf { it.isNotEmpty() }
+}
 
 /** The sentence around [offset]: a long press marks a sentence, the sheet can widen it to the paragraph. */
 fun sentenceAt(block: TextBlock, offset: Int, language: String?): IntRange {

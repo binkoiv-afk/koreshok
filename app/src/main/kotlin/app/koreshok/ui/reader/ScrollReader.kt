@@ -203,6 +203,7 @@ internal fun ScrollReader(
                                                                     start = range.first,
                                                                     end = range.last + 1,
                                                                     text = text.text.substring(range.first, range.last + 1),
+                                                                    word = wordAt(text.text, char),
                                                                 ),
                                                             )
                                                         }

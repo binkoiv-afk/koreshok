@@ -44,6 +44,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
@@ -51,9 +52,11 @@ import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.FormatSize
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
@@ -81,6 +84,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -164,6 +168,8 @@ private fun Reader(ready: ReaderState.Ready, prefs: ReaderPrefs, viewModel: Read
     var showToc by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showAnnotations by remember { mutableStateOf(false) }
+    var showSearch by remember { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
     var note by remember { mutableStateOf<String?>(null) }
     var highlight by remember { mutableStateOf<HighlightDraft?>(null) }
 
@@ -259,6 +265,7 @@ private fun Reader(ready: ReaderState.Ready, prefs: ReaderPrefs, viewModel: Read
             canGoBack = history.isNotEmpty(),
             onBack = onBack,
             onToc = { showToc = true },
+            onSearch = { showSearch = true },
             onAnnotations = { showAnnotations = true },
             onSettings = { showSettings = true },
             onSeek = viewModel::seek,
@@ -275,6 +282,19 @@ private fun Reader(ready: ReaderState.Ready, prefs: ReaderPrefs, viewModel: Read
             showMenu = false
             target?.let { viewModel.goTo(it) }
         }
+    }
+    if (showSearch) {
+        SearchSheet(
+            document = document,
+            query = searchQuery,
+            onQuery = { searchQuery = it },
+            onOpen = { target ->
+                showSearch = false
+                showMenu = false
+                viewModel.goTo(target)
+            },
+            onDismiss = { showSearch = false },
+        )
     }
     if (showAnnotations) {
         AnnotationsSheet(
@@ -500,6 +520,7 @@ private fun ChapterPager(
                                             start = range.first,
                                             end = range.last + 1,
                                             text = block.text.substring(range.first, range.last + 1),
+                                            word = wordAt(block.text, at.second),
                                         ),
                                     )
                                 }
@@ -645,6 +666,7 @@ private fun ReaderMenu(
     canGoBack: Boolean,
     onBack: () -> Unit,
     onToc: () -> Unit,
+    onSearch: () -> Unit,
     onAnnotations: () -> Unit,
     onSettings: () -> Unit,
     onSeek: (Float) -> Unit,
@@ -672,7 +694,7 @@ private fun ReaderMenu(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                IconButton(onClick = onToc) { Icon(Icons.AutoMirrored.Filled.List, "Оглавление") }
+                IconButton(onClick = onSearch) { Icon(Icons.Default.Search, "Поиск по книге") }
                 IconButton(onClick = onAnnotations) { Icon(Icons.Default.Bookmarks, "Закладки и цитаты") }
                 IconButton(onClick = onSettings) { Icon(Icons.Default.FormatSize, "Оформление") }
             }
@@ -722,6 +744,7 @@ private fun ReaderMenu(
                 // Labelled, not just icons up top: this is where people look for fonts and themes.
                 Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                     MenuAction(Icons.AutoMirrored.Filled.List, "Оглавление", onToc)
+                    MenuAction(Icons.Default.Search, "Поиск", onSearch)
                     MenuAction(Icons.Default.Bookmarks, "Закладки", onAnnotations)
                     MenuAction(Icons.Default.FormatSize, "Оформление", onSettings)
                 }
@@ -818,6 +841,24 @@ private fun HighlightSheet(
                     .padding(12.dp),
             ) {
                 Text(current.text, style = MaterialTheme.typography.bodyLarge)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                draft.word?.let { word ->
+                    AssistChip(
+                        onClick = { openDictionary(context, word) },
+                        label = { Text("Значение «$word»", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.MenuBook, null, Modifier.size(18.dp)) },
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                }
+                AssistChip(
+                    onClick = { openTranslation(context, draft.word ?: current.text) },
+                    label = { Text(if (draft.word != null) "Перевод" else "Перевести", maxLines = 1) },
+                    leadingIcon = { Icon(Icons.Default.Translate, null, Modifier.size(18.dp)) },
+                )
+            }
+            if (draft.word != null) {
+                TextButton(onClick = { openTranslation(context, current.text) }) { Text("Перевести всю цитату") }
             }
             if (block != null && (current.start > 0 || current.end < block.text.length)) {
                 AssistChip(
