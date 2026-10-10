@@ -183,6 +183,10 @@ fun HomeScreen(onRead: (String) -> Unit) {
                     onCheckUpdate = { library.checkForUpdate() },
                     onUpdate = { library.downloadUpdate(context) },
                     onReading = { readingSettings = true },
+                    stats = {
+                        val summary by app.stats.summary.collectAsStateWithLifecycle(initialValue = null)
+                        summary?.let { StatsCard(it) }
+                    },
                     sync = {
                         SyncCard(
                             prefs = syncPrefs,

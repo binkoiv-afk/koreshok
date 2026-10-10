@@ -13,6 +13,7 @@ import app.koreshok.core.model.BookFormat
 import app.koreshok.data.AnnotationEntity
 import app.koreshok.data.AnnotationKind
 import app.koreshok.data.LibraryRepository
+import app.koreshok.data.ReadingStats
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -38,6 +39,7 @@ class ReaderViewModel(
     private val uri: String,
     private val library: LibraryRepository,
     private val settings: ReaderSettings,
+    private val stats: ReadingStats,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<ReaderState>(ReaderState.Loading)
@@ -80,8 +82,12 @@ class ReaderViewModel(
     /** The pager settled on a page that starts at [position]. */
     fun onPageShown(position: Position) {
         if (position == _location.value.position) return
+        val previous = _location.value.position
         _location.value = _location.value.copy(position = position, toChapterEnd = false)
         val doc = document ?: return
+        // Reading forward, not jumping: counts toward reading speed and pages read.
+        val read = ((doc.progressOf(position) - doc.progressOf(previous)) * doc.totalLength).toLong()
+        if (read in 1..MAX_STEP_CHARS) viewModelScope.launch { stats.add(chars = read) }
         viewModelScope.launch { library.saveProgress(uri, position.serialize(), doc.progressOf(position)) }
     }
 
@@ -176,10 +182,13 @@ class ReaderViewModel(
     }
 
     companion object {
+        /** A move longer than this is a jump (TOC, slider), not reading. */
+        private const val MAX_STEP_CHARS = 8000L
+
         fun factory(uri: String): ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as KoreshokApp
-                ReaderViewModel(uri, app.library, app.readerSettings)
+                ReaderViewModel(uri, app.library, app.readerSettings, app.stats)
             }
         }
     }

@@ -2,6 +2,8 @@ package app.koreshok.ui.reader
 
 import android.content.Context
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -9,20 +11,42 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import app.koreshok.R
 
-enum class ReaderTheme(val label: String, val background: Color, val text: Color, val secondary: Color, val accent: Color) {
+enum class ReaderTheme(val label: String, background: Color, text: Color, secondary: Color, accent: Color) {
     DAY("День", Color(0xFFFBF8F2), Color(0xFF1F1B16), Color(0xFF8A8075), Color(0xFF8A4B1F)),
     SEPIA("Сепия", Color(0xFFF1E4C9), Color(0xFF3B2F22), Color(0xFF8C7A60), Color(0xFF8A4B1F)),
     NIGHT("Ночь", Color(0xFF1E1D1B), Color(0xFFCFC7BA), Color(0xFF7F786E), Color(0xFFD9A066)),
     BLACK("Чёрная", Color(0xFF000000), Color(0xFFB8B2A8), Color(0xFF6B665F), Color(0xFFD9A066)),
+    /** The reader's own colours; set from [ReaderPrefs.customBackground] and [ReaderPrefs.customText]. */
+    CUSTOM("Свои", Color(0xFFE8F0E3), Color(0xFF1F2A1C), Color(0xFF6E7A69), Color(0xFF3F7A4A)),
+    ;
+
+    var background = background
+        private set
+    var text = text
+        private set
+    var secondary = secondary
+        private set
+    var accent = accent
+        private set
+
+    internal fun applyCustom(background: Color, text: Color) {
+        this.background = background
+        this.text = text
+        secondary = text.copy(alpha = 0.6f).compositeOver(background)
+        accent = if (background.luminance() > 0.5f) Color(0xFF8A4B1F) else Color(0xFFD9A066)
+    }
 }
 
 enum class ReaderFont(val label: String, val family: FontFamily) {
+    /** A font file the reader added; see [ReaderPrefs.fontFamily]. */
+    CUSTOM("Свой", FontFamily.Default),
     PT_SERIF("PT Serif", ptFamily(R.font.pt_serif_regular, R.font.pt_serif_bold, R.font.pt_serif_italic, R.font.pt_serif_bold_italic)),
     PT_SANS("PT Sans", ptFamily(R.font.pt_sans_regular, R.font.pt_sans_bold, R.font.pt_sans_italic, R.font.pt_sans_bold_italic)),
     SERIF("Антиква", FontFamily.Serif),
@@ -36,6 +60,12 @@ private fun ptFamily(regular: Int, bold: Int, italic: Int, boldItalic: Int) = Fo
     Font(italic, style = FontStyle.Italic),
     Font(boldItalic, FontWeight.Bold, FontStyle.Italic),
 )
+
+enum class PageAnimation(val label: String) {
+    SLIDE("Сдвиг"),
+    CURL("Как бумага"),
+    NONE("Без анимации"),
+}
 
 data class ReaderPrefs(
     val theme: ReaderTheme = ReaderTheme.DAY,
@@ -63,7 +93,31 @@ data class ReaderPrefs(
     val voice: String = "",
     val speechRate: Float = 1f,
     val speechPitch: Float = 1f,
-)
+    /** Automatic page turning or scrolling speed, 1..20. */
+    val autoSpeed: Float = 5f,
+    /** Path of the reader's own font file in the app's storage. */
+    val customFont: String = "",
+    val customBackground: Long = 0xFFE8F0E3,
+    val customText: Long = 0xFF1F2A1C,
+    /** Landscape: two pages side by side. */
+    val twoPages: Boolean = true,
+    val pageAnimation: PageAnimation = PageAnimation.SLIDE,
+) {
+    /** The font to set the text in: the reader's own file when chosen and still there. */
+    fun fontFamily(): FontFamily = if (font == ReaderFont.CUSTOM) customFamily(customFont) ?: FontFamily.Serif else font.family
+}
+
+private var cachedCustom: Pair<String, FontFamily>? = null
+
+private fun customFamily(path: String): FontFamily? {
+    if (path.isBlank()) return null
+    cachedCustom?.let { (cachedPath, family) -> if (cachedPath == path) return family }
+    val file = java.io.File(path)
+    if (!file.isFile) return null
+    val family = runCatching { FontFamily(Font(file)) }.getOrNull() ?: return null
+    cachedCustom = path to family
+    return family
+}
 
 private val Context.readerStore by preferencesDataStore("reader")
 
@@ -86,6 +140,12 @@ class ReaderSettings(private val context: Context) {
     private val voice = stringPreferencesKey("voice")
     private val speechRate = floatPreferencesKey("speechRate")
     private val speechPitch = floatPreferencesKey("speechPitch")
+    private val autoSpeed = floatPreferencesKey("autoSpeed")
+    private val customFont = stringPreferencesKey("customFont")
+    private val customBackground = longPreferencesKey("customBackground")
+    private val customText = longPreferencesKey("customText")
+    private val twoPages = booleanPreferencesKey("twoPages")
+    private val pageAnimation = stringPreferencesKey("pageAnimation")
 
     val prefs: Flow<ReaderPrefs> = context.readerStore.data.map { p ->
         val defaults = ReaderPrefs()
@@ -108,7 +168,13 @@ class ReaderSettings(private val context: Context) {
             voice = p[voice] ?: defaults.voice,
             speechRate = p[speechRate] ?: defaults.speechRate,
             speechPitch = p[speechPitch] ?: defaults.speechPitch,
-        )
+            autoSpeed = p[autoSpeed] ?: defaults.autoSpeed,
+            customFont = p[customFont] ?: defaults.customFont,
+            customBackground = p[customBackground] ?: defaults.customBackground,
+            customText = p[customText] ?: defaults.customText,
+            twoPages = p[twoPages] ?: defaults.twoPages,
+            pageAnimation = p[pageAnimation]?.let { runCatching { PageAnimation.valueOf(it) }.getOrNull() } ?: defaults.pageAnimation,
+        ).also { ReaderTheme.CUSTOM.applyCustom(Color(it.customBackground), Color(it.customText)) }
     }
 
     suspend fun save(value: ReaderPrefs) {
@@ -131,6 +197,12 @@ class ReaderSettings(private val context: Context) {
             p[voice] = value.voice
             p[speechRate] = value.speechRate
             p[speechPitch] = value.speechPitch
+            p[autoSpeed] = value.autoSpeed
+            p[customFont] = value.customFont
+            p[customBackground] = value.customBackground
+            p[customText] = value.customText
+            p[twoPages] = value.twoPages
+            p[pageAnimation] = value.pageAnimation.name
         }
     }
 }

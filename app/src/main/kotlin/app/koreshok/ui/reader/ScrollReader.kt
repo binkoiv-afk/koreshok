@@ -21,6 +21,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -60,6 +61,8 @@ internal fun ScrollReader(
     marginPx: Int,
     annotations: List<AnnotationEntity>,
     speaking: Utterance?,
+    autoScroll: Float? = null,
+    charsPerMinute: Int = DEFAULT_CHARS_PER_MINUTE,
     onPositionShown: (Position) -> Unit,
     onToggleBookmark: (Position, Position) -> Unit,
     onLink: LinkHandler,
@@ -102,6 +105,21 @@ internal fun ScrollReader(
     val next by remember { derivedStateOf { positionOf(listState.firstVisibleItemIndex + 1) } }
     val bookmarked = annotations.any { it.kind == AnnotationKind.BOOKMARK && it.isOnPage(current, next) }
     val viewportPx = remember { mutableStateOf(0) }
+
+    LaunchedEffect(autoScroll) {
+        val speed = autoScroll ?: return@LaunchedEffect
+        val pxPerSecond = autoScrollDpPerSecond(speed) * density.density
+        var last = 0L
+        while (true) {
+            withFrameNanos { now ->
+                if (last != 0L) {
+                    val px = pxPerSecond * (now - last) / 1_000_000_000f
+                    if (!listState.isScrollInProgress) listState.dispatchRawDelta(px)
+                }
+                last = now
+            }
+        }
+    }
 
     // Reading aloud: the column follows the voice.
     LaunchedEffect(speaking?.position) {
@@ -235,7 +253,13 @@ internal fun ScrollReader(
         }
         val progress = document.progressOf(current)
         Row(Modifier.fillMaxWidth().height(28.dp).padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-            Spacer(Modifier.weight(1f))
+            Text(
+                "Глава: ещё ${minutesText(document.charsToChapterEnd(current), charsPerMinute)}",
+                color = theme.secondary,
+                fontSize = 12.sp,
+                maxLines = 1,
+                modifier = Modifier.weight(1f),
+            )
             if (layout.prefs.showClock) ClockAndBattery(theme)
             Text(
                 "${(progress * 100).roundToInt()}%",

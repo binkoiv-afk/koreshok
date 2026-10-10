@@ -153,6 +153,17 @@ class ScreensTest {
 
     @Test fun scrollReaderSepia() = snap("reader_scroll_sepia") { scrollPage(ReaderPrefs(scroll = true, theme = ReaderTheme.SEPIA)) }
 
+    @Test fun stats() = snap("stats") {
+        val today = java.time.LocalDate.now()
+        val days = listOf(1800L, 0L, 2400L, 3600L, 900L, 4200L, 1500L).mapIndexed { i, seconds ->
+            val date = today.minusDays((6 - i).toLong())
+            date to app.koreshok.data.DayStats(date, seconds, seconds * 18)
+        }.toMap()
+        androidx.compose.foundation.layout.Column(Modifier.padding(20.dp)) {
+            app.koreshok.ui.home.StatsCard(app.koreshok.data.StatsSummary(days))
+        }
+    }
+
     @Test fun readAloud() = snap("reader_read_aloud") {
         val prefs = ReaderPrefs(scroll = true, speechRate = 1.25f)
         Box(Modifier.fillMaxSize()) {

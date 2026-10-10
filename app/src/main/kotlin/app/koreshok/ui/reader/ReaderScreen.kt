@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -62,6 +63,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.SlowMotionVideo
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -90,11 +92,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
@@ -132,6 +140,7 @@ import app.koreshok.core.document.Position
 import app.koreshok.core.document.noteBlocks
 import coil.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
@@ -197,7 +206,23 @@ private fun Reader(uri: String, ready: ReaderState.Ready, prefs: ReaderPrefs, vi
     var highlight by remember { mutableStateOf<HighlightDraft?>(null) }
 
     ImmersiveMode(hideBars = !showMenu)
-    ReaderWindow(prefs)
+    var liveBrightness by remember { mutableStateOf<Float?>(null) }
+    var gestureHint by remember { mutableStateOf<String?>(null) }
+    var autoScrolling by remember { mutableStateOf(false) }
+    val latestPrefs by rememberUpdatedState(prefs)
+    val app = context.applicationContext as KoreshokApp
+    val statsSummary by app.stats.summary.collectAsStateWithLifecycle(initialValue = null)
+    val charsPerMinute = statsSummary?.charsPerMinute ?: DEFAULT_CHARS_PER_MINUTE
+    // Reading time: counted while the book is on screen.
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(TICK_SECONDS * 1000L)
+            if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) app.stats.add(seconds = TICK_SECONDS)
+        }
+    }
+    val autoScroll = prefs.autoSpeed.takeIf { autoScrolling && !showMenu }
+    ReaderWindow(prefs.copy(brightness = liveBrightness ?: prefs.brightness))
 
     val onLink: LinkHandler = remember(viewModel) {
         { target, isNote ->
@@ -220,12 +245,39 @@ private fun Reader(uri: String, ready: ReaderState.Ready, prefs: ReaderPrefs, vi
 
     CompositionLocalProvider(LocalDensity provides density) {
         val insets = WindowInsets.systemBarsIgnoringVisibility.asPaddingValues()
-        BoxWithConstraints(Modifier.fillMaxSize().padding(insets)) {
+        BoxWithConstraints(
+            Modifier
+                .fillMaxSize()
+                .padding(insets)
+                .readerGestures(
+                    brightness = { liveBrightness ?: latestPrefs.brightness },
+                    fontSize = { latestPrefs.fontSize },
+                    onBrightness = { value, done ->
+                        liveBrightness = value
+                        gestureHint = "Яркость ${(value * 100).roundToInt()}%"
+                        if (done) {
+                            viewModel.updatePrefs { it.copy(brightness = value) }
+                            gestureHint = null
+                        }
+                    },
+                    onFontSize = { value, done ->
+                        gestureHint = "Шрифт ${value.roundToInt()}"
+                        if (done) {
+                            viewModel.updatePrefs { it.copy(fontSize = value) }
+                            gestureHint = null
+                        }
+                    },
+                ),
+        ) {
             val headerPx = with(density) { 28.dp.roundToPx() }
             val footerPx = with(density) { 28.dp.roundToPx() }
             val marginPx = with(density) { prefs.margin.dp.roundToPx() }
+            // Landscape on a wide screen: two pages side by side, like an open book.
+            val spread = if (!prefs.scroll && prefs.twoPages && constraints.maxWidth > constraints.maxHeight &&
+                with(density) { constraints.maxWidth.toDp() } >= 560.dp
+            ) 2 else 1
             val layout = LayoutSpec(
-                widthPx = constraints.maxWidth - marginPx * 2,
+                widthPx = constraints.maxWidth / spread - marginPx * 2,
                 heightPx = constraints.maxHeight - headerPx - footerPx,
                 density = density.density,
                 prefs = prefs,
@@ -239,6 +291,8 @@ private fun Reader(uri: String, ready: ReaderState.Ready, prefs: ReaderPrefs, vi
                     marginPx = marginPx,
                     annotations = annotations,
                     speaking = speaking,
+                    autoScroll = autoScroll,
+                    charsPerMinute = charsPerMinute,
                     onPositionShown = viewModel::onPageShown,
                     onToggleBookmark = viewModel::toggleBookmark,
                     onLink = onLink,
@@ -267,10 +321,12 @@ private fun Reader(uri: String, ready: ReaderState.Ready, prefs: ReaderPrefs, vi
                             location = location,
                             layout = layout,
                             marginPx = marginPx,
+                            spread = spread,
                             headerPx = headerPx,
                             footerPx = footerPx,
                             annotations = annotations,
                             speaking = speaking,
+                            autoScroll = autoScroll,
                             viewModel = viewModel,
                             onLink = onLink,
                             onCenterTap = { showMenu = !showMenu },
@@ -291,12 +347,17 @@ private fun Reader(uri: String, ready: ReaderState.Ready, prefs: ReaderPrefs, vi
             onBack = onBack,
             onToc = { showToc = true },
             onSearch = { showSearch = true },
+            onAutoScroll = {
+                showMenu = false
+                autoScrolling = true
+            },
             onListen = {
                 showMenu = false
                 listen()
             },
             onAnnotations = { showAnnotations = true },
             onSettings = { showSettings = true },
+            charsPerMinute = charsPerMinute,
             onSeek = viewModel::seek,
             onPreviousChapter = { viewModel.previousChapter(toEnd = false) },
             onNextChapter = viewModel::nextChapter,
@@ -305,6 +366,23 @@ private fun Reader(uri: String, ready: ReaderState.Ready, prefs: ReaderPrefs, vi
         )
     }
 
+    gestureHint?.let { hint ->
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { GestureHint(hint, theme) }
+    }
+    // A saved brightness the gesture already applied makes the live value redundant.
+    LaunchedEffect(prefs.brightness) { if (gestureHint == null) liveBrightness = null }
+    if (autoScrolling && !showMenu) {
+        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 36.dp)) {
+            AutoScrollBar(
+                speed = prefs.autoSpeed,
+                paged = !prefs.scroll,
+                theme = theme,
+                onSpeed = { speed -> viewModel.updatePrefs { it.copy(autoSpeed = speed) } },
+                onStop = { autoScrolling = false },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+    }
     if (listening) {
         Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 36.dp, start = 12.dp, end = 12.dp)) {
             ReadAloudBar(
@@ -487,10 +565,13 @@ private fun ChapterPager(
     location: Location,
     layout: LayoutSpec,
     marginPx: Int,
+    /** 2 for a book spread in landscape: two pages side by side. */
+    spread: Int,
     headerPx: Int,
     footerPx: Int,
     annotations: List<AnnotationEntity>,
     speaking: Utterance?,
+    autoScroll: Float?,
     viewModel: ReaderViewModel,
     onLink: LinkHandler,
     onCenterTap: () -> Unit,
@@ -501,13 +582,19 @@ private fun ChapterPager(
     val hasPrevious = chapter > 0
     val hasNext = chapter < document.chapters.lastIndex
     val first = if (hasPrevious) 1 else 0
-    val count = pages.size + first + if (hasNext) 1 else 0
+    val spreads = (pages.size + spread - 1) / spread
+    val count = spreads + first + if (hasNext) 1 else 0
     val initial = first + if (location.toChapterEnd) {
-        pages.lastIndex
+        spreads - 1
     } else {
-        pages.indexOfLast { it.start <= location.position }.coerceAtLeast(0)
+        pages.indexOfLast { it.start <= location.position }.coerceAtLeast(0) / spread
     }
     val pagerState = rememberPagerState(initialPage = initial) { count }
+    val animation = layout.prefs.pageAnimation
+    suspend fun turnTo(target: Int) {
+        val page = target.coerceIn(0, count - 1)
+        if (animation == PageAnimation.NONE) pagerState.scrollToPage(page) else pagerState.animateScrollToPage(page)
+    }
     val scope = rememberCoroutineScope()
     val hits = remember { HashMap<Int, PageHits>() }
     // Plain holder, not state: it changes on every layout and nothing needs to recompose for it.
@@ -522,14 +609,15 @@ private fun ChapterPager(
             when {
                 hasPrevious && page == 0 -> viewModel.previousChapter(toEnd = true)
                 hasNext && page == count - 1 -> viewModel.nextChapter()
-                else -> pages.getOrNull(page - first)?.let { viewModel.onPageShown(it.start) }
+                else -> pages.getOrNull((page - first) * spread)?.let { viewModel.onPageShown(it.start) }
             }
         }
     }
 
     fun hitAt(offset: Offset): Pair<TextBlock, Pair<Int, Int>>? {
         val from = pagerCoordinates[0] ?: return null
-        val (block, charOffset) = hits[pagerState.currentPage]?.hit(from, offset) ?: return null
+        val firstPage = (pagerState.currentPage - first) * spread
+        val (block, charOffset) = (0 until spread).firstNotNullOfOrNull { hits[firstPage + it]?.hit(from, offset) } ?: return null
         val textBlock = document.chapters[chapter].blocks.getOrNull(block) as? TextBlock ?: return null
         return textBlock to (block to charOffset)
     }
@@ -545,17 +633,23 @@ private fun ChapterPager(
             viewModel.goTo(target.position)
             return@LaunchedEffect
         }
-        val page = first + pages.indexOfLast { it.start <= target.position }.coerceAtLeast(0)
-        if (page != pagerState.currentPage && !pagerState.isScrollInProgress) pagerState.animateScrollToPage(page)
+        val page = first + pages.indexOfLast { it.start <= target.position }.coerceAtLeast(0) / spread
+        if (page != pagerState.currentPage && !pagerState.isScrollInProgress) turnTo(page)
+    }
+
+    LaunchedEffect(autoScroll, pagerState.settledPage) {
+        val speed = autoScroll ?: return@LaunchedEffect
+        delay((autoPageSeconds(speed) * 1000).toLong())
+        turnTo(pagerState.currentPage + 1)
     }
 
     VolumeKeyPaging(layout.prefs.volumeKeys) { direction ->
-        scope.launch { pagerState.animateScrollToPage((pagerState.currentPage + direction).coerceIn(0, count - 1)) }
+        scope.launch { turnTo(pagerState.currentPage + direction) }
     }
 
-    val pageIndex = (pagerState.currentPage - first).coerceIn(0, pages.lastIndex)
+    val pageIndex = ((pagerState.currentPage - first) * spread).coerceIn(0, pages.lastIndex)
     val pageStart = pages[pageIndex].start
-    val nextStart = pages.getOrNull(pageIndex + 1)?.start
+    val nextStart = pages.getOrNull(pageIndex + spread)?.start
     val bookmarked = annotations.any { it.kind == AnnotationKind.BOOKMARK && it.isOnPage(pageStart, nextStart) }
 
     val density = LocalDensity.current
@@ -602,28 +696,34 @@ private fun ChapterPager(
                             val third = size.width / 3f
                             when {
                                 existing != null -> onHighlight(existing.toDraft())
-                                offset.x < third -> scope.launch {
-                                    pagerState.animateScrollToPage((pagerState.currentPage - 1).coerceAtLeast(0))
-                                }
-                                offset.x > third * 2 -> scope.launch {
-                                    pagerState.animateScrollToPage((pagerState.currentPage + 1).coerceAtMost(count - 1))
-                                }
+                                offset.x < third -> scope.launch { turnTo(pagerState.currentPage - 1) }
+                                offset.x > third * 2 -> scope.launch { turnTo(pagerState.currentPage + 1) }
                                 else -> onCenterTap()
                             }
                         },
                     )
                 },
         ) { index ->
-            val page = pages.getOrNull(index - first)
-            Box(Modifier.fillMaxSize().padding(horizontal = with(density) { marginPx.toDp() })) {
-                if (page != null) {
-                    val pageHits = remember(page) { PageHits().also { hits[index] = it } }
-                    PageView(document, chapter, page, layout, chapterHighlights, speaking, pageHits, onLink)
+            Row(
+                Modifier
+                    .fillMaxSize()
+                    .then(if (animation == PageAnimation.CURL) Modifier.paperTurn(pagerState, index, theme) else Modifier),
+            ) {
+                for (side in 0 until spread) {
+                    val number = (index - first) * spread + side
+                    val page = if (index - first in 0 until spreads) pages.getOrNull(number) else null
+                    Box(Modifier.weight(1f).fillMaxHeight().padding(horizontal = with(density) { marginPx.toDp() })) {
+                        if (page != null) {
+                            val pageHits = remember(page) { PageHits().also { hits[number] = it } }
+                            PageView(document, chapter, page, layout, chapterHighlights, speaking, pageHits, onLink)
+                        }
+                    }
                 }
             }
         }
+        val pagesLeft = (pages.size - pageIndex - spread).coerceAtLeast(0)
         Footer(
-            left = "${pageIndex + 1} / ${pages.size}",
+            left = if (pagesLeft == 0) "Конец главы" else "Глава: ещё $pagesLeft стр.",
             right = "${(document.progressOf(pageStart) * 100).roundToInt()}%",
             theme = theme,
             heightPx = footerPx,
@@ -743,9 +843,11 @@ private fun ReaderMenu(
     onBack: () -> Unit,
     onToc: () -> Unit,
     onSearch: () -> Unit,
+    onAutoScroll: () -> Unit,
     onListen: () -> Unit,
     onAnnotations: () -> Unit,
     onSettings: () -> Unit,
+    charsPerMinute: Int,
     onSeek: (Float) -> Unit,
     onPreviousChapter: () -> Unit,
     onNextChapter: () -> Unit,
@@ -771,6 +873,7 @@ private fun ReaderMenu(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                IconButton(onClick = onAutoScroll) { Icon(Icons.Default.SlowMotionVideo, "Автолистание") }
                 IconButton(onClick = onSearch) { Icon(Icons.Default.Search, "Поиск по книге") }
                 IconButton(onClick = onAnnotations) { Icon(Icons.Default.Bookmarks, "Закладки и цитаты") }
                 IconButton(onClick = onSettings) { Icon(Icons.Default.FormatSize, "Оформление") }
@@ -812,7 +915,8 @@ private fun ReaderMenu(
                 }
                 val chapterAtSlider = if (dragging) document.positionAt(sliderValue).chapter else position.chapter
                 Text(
-                    "${(shown * 100).roundToInt()}% · ${document.chapters[chapterAtSlider].title ?: "Глава ${chapterAtSlider + 1}"}",
+                    "${(shown * 100).roundToInt()}% · ${document.chapters[chapterAtSlider].title ?: "Глава ${chapterAtSlider + 1}"}" +
+                        if (dragging) "" else " · ${minutesText(document.charsToChapterEnd(position), charsPerMinute)} до конца главы",
                     style = MaterialTheme.typography.labelMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -1054,3 +1158,51 @@ private fun AnnotationsSheet(
         }
     }
 }
+
+private const val TICK_SECONDS = 15L
+const val DEFAULT_CHARS_PER_MINUTE = 1000
+
+/** Characters from [position] to the end of its chapter. */
+fun Document.charsToChapterEnd(position: Position): Int {
+    val blocks = chapters.getOrNull(position.chapter)?.blocks ?: return 0
+    val before = blocks.take(position.block).sumOf { it.length } + position.offset
+    return (chapterLengths[position.chapter] - before).coerceAtLeast(0)
+}
+
+/** "~7 мин", or "~1 ч 20 мин" for long chapters. */
+fun minutesText(chars: Int, charsPerMinute: Int): String {
+    val minutes = (chars.toFloat() / charsPerMinute.coerceAtLeast(100)).roundToInt().coerceAtLeast(1)
+    return if (minutes < 60) "~$minutes мин" else "~${minutes / 60} ч ${minutes % 60} мин"
+}
+
+/**
+ * The "paper" page turn: the page being left stays in place and folds away around its spine,
+ * the next page lies still underneath and darkens slightly until it is uncovered.
+ */
+private fun Modifier.paperTurn(state: androidx.compose.foundation.pager.PagerState, index: Int, theme: ReaderTheme): Modifier =
+    this
+        .zIndex(if (pageOffset(state, index) > 0f) 1f else 0f)
+        .graphicsLayer {
+            val offset = pageOffset(state, index)
+            // Cancel the pager's slide: pages turn, they do not move sideways.
+            translationX = offset * size.width
+            if (offset > 0f) {
+                transformOrigin = TransformOrigin(0f, 0.5f)
+                cameraDistance = 14f * density
+                rotationY = -100f * offset.coerceAtMost(1f)
+            }
+        }
+        .drawWithContent {
+            drawContent()
+            val offset = pageOffset(state, index)
+            if (offset > 0f) {
+                // The folding page catches less light as it turns.
+                drawRect(Color.Black.copy(alpha = 0.25f * offset.coerceAtMost(1f)))
+            } else if (offset < 0f) {
+                drawRect(Color.Black.copy(alpha = 0.18f * (-offset).coerceIn(0f, 1f)))
+            }
+        }
+        .background(theme.background)
+
+private fun pageOffset(state: androidx.compose.foundation.pager.PagerState, index: Int): Float =
+    (state.currentPage - index) + state.currentPageOffsetFraction

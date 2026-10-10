@@ -61,6 +61,7 @@ fun MoreContent(
     onUpdate: () -> Unit,
     sync: @Composable () -> Unit = {},
     onReading: () -> Unit = {},
+    stats: @Composable () -> Unit = {},
 ) {
     Column(
         Modifier
@@ -132,6 +133,8 @@ fun MoreContent(
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+
+        stats()
 
         sync()
 

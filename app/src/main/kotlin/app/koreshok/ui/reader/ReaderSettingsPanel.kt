@@ -1,6 +1,19 @@
 package app.koreshok.ui.reader
 
 import androidx.compose.foundation.BorderStroke
+import androidx.activity.compose.LocalActivityResultRegistryOwner
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.AssistChip
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -86,8 +99,23 @@ fun ReaderSettingsPanel(prefs: ReaderPrefs, update: ((ReaderPrefs) -> ReaderPref
             }
         }
 
+        if (!prefs.scroll) {
+            Section("Перелистывание") {
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    PageAnimation.entries.forEachIndexed { index, animation ->
+                        SegmentedButton(
+                            selected = prefs.pageAnimation == animation,
+                            onClick = { update { it.copy(pageAnimation = animation) } },
+                            shape = SegmentedButtonDefaults.itemShape(index, PageAnimation.entries.size),
+                            icon = {},
+                        ) { Text(animation.label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    }
+                }
+            }
+        }
+
         Section("Тема") {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ReaderTheme.entries.forEach { theme ->
                     val selected = theme == prefs.theme
                     Column(
@@ -109,17 +137,38 @@ fun ReaderSettingsPanel(prefs: ReaderPrefs, update: ((ReaderPrefs) -> ReaderPref
                     }
                 }
             }
+            if (prefs.theme == ReaderTheme.CUSTOM) {
+                Spacer(Modifier.height(10.dp))
+                Swatches("Фон", BackgroundSwatches, prefs.customBackground) { c -> update { it.copy(customBackground = c) } }
+                Spacer(Modifier.height(6.dp))
+                Swatches("Текст", TextSwatches, prefs.customText) { c -> update { it.copy(customText = c) } }
+            }
         }
 
         Section("Шрифт") {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ReaderFont.entries.forEach { font ->
+                ReaderFont.entries.filter { it != ReaderFont.CUSTOM }.forEach { font ->
                     FilterChip(
                         selected = prefs.font == font,
                         onClick = { update { it.copy(font = font) } },
                         label = { Text(font.label, maxLines = 1, fontFamily = font.family, fontSize = 15.sp) },
                     )
                 }
+                if (prefs.customFont.isNotBlank()) {
+                    FilterChip(
+                        selected = prefs.font == ReaderFont.CUSTOM,
+                        onClick = { update { it.copy(font = ReaderFont.CUSTOM) } },
+                        label = {
+                            Text(
+                                java.io.File(prefs.customFont).nameWithoutExtension,
+                                maxLines = 1,
+                                fontFamily = prefs.copy(font = ReaderFont.CUSTOM).fontFamily(),
+                                fontSize = 15.sp,
+                            )
+                        },
+                    )
+                }
+                AddFontChip { path -> update { it.copy(font = ReaderFont.CUSTOM, customFont = path) } }
             }
             Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -179,6 +228,7 @@ fun ReaderSettingsPanel(prefs: ReaderPrefs, update: ((ReaderPrefs) -> ReaderPref
                 SwitchRow("Не гасить экран", "пока открыта книга", prefs.keepScreenOn) { v -> update { it.copy(keepScreenOn = v) } }
                 SwitchRow("Кнопки громкости", "листают страницы", prefs.volumeKeys) { v -> update { it.copy(volumeKeys = v) } }
                 SwitchRow("Часы и заряд", "внизу страницы", prefs.showClock) { v -> update { it.copy(showClock = v) } }
+                SwitchRow("Две страницы", "в альбомной ориентации, как разворот", prefs.twoPages) { v -> update { it.copy(twoPages = v) } }
             }
         }
     }
@@ -209,6 +259,74 @@ private fun Presets(options: List<Pair<Float, String>>, current: Float, onPick: 
         }
     }
 }
+
+private val BackgroundSwatches = listOf(
+    0xFFFFFFFF, 0xFFF5F5F0, 0xFFFBF3E4, 0xFFF3E9D2, 0xFFE8F0E3, 0xFFE3ECF2, 0xFFEDE4F0,
+    0xFF2B2B2B, 0xFF1F2A1C, 0xFF1B2330, 0xFF2A1F1A, 0xFF000000,
+)
+private val TextSwatches = listOf(
+    0xFF000000, 0xFF1F1B16, 0xFF3B2F22, 0xFF1F2A1C, 0xFF1B2A3A,
+    0xFFE6E1D6, 0xFFCFC7BA, 0xFFB8D4B0, 0xFFF0D9A8, 0xFFFFFFFF,
+)
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun Swatches(label: String, colors: List<Long>, current: Long, onPick: (Long) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(48.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            colors.forEach { value ->
+                Box(
+                    Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(Color(value))
+                        .border(
+                            if (value == current) BorderStroke(2.5.dp, MaterialTheme.colorScheme.primary)
+                            else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            CircleShape,
+                        )
+                        .clickable { onPick(value) },
+                )
+            }
+        }
+    }
+}
+
+/** "+ Свой шрифт": picks a TTF or OTF file and keeps a copy in the app. */
+@Composable
+private fun AddFontChip(onAdded: (String) -> Unit) {
+    // Screenshot tests have no activity to pick files with.
+    if (LocalActivityResultRegistryOwner.current == null) return
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val path = withContext(Dispatchers.IO) { copyFont(context, uri) }
+            if (path != null) onAdded(path)
+        }
+    }
+    AssistChip(
+        onClick = { pick.launch(arrayOf("font/*", "application/x-font-ttf", "application/x-font-otf", "application/font-sfnt", "application/octet-stream")) },
+        label = { Text("Свой шрифт…", fontSize = 15.sp) },
+        leadingIcon = { Icon(Icons.Default.Add, null, Modifier.size(18.dp)) },
+    )
+}
+
+private fun copyFont(context: android.content.Context, uri: android.net.Uri): String? = runCatching {
+    val name = androidx.documentfile.provider.DocumentFile.fromSingleUri(context, uri)?.name
+        ?.replace(Regex("[^\\p{L}\\p{N}._ -]"), "_") ?: "font.ttf"
+    val dir = java.io.File(context.filesDir, "fonts").apply { mkdirs() }
+    val target = java.io.File(dir, name)
+    context.contentResolver.openInputStream(uri)?.use { input -> target.outputStream().use { input.copyTo(it) } } ?: return null
+    // A file Android cannot read as a font is not kept.
+    if (runCatching { android.graphics.Typeface.createFromFile(target) }.isFailure) {
+        target.delete()
+        return null
+    }
+    target.absolutePath
+}.getOrNull()
 
 /** Exact value between the presets, for those who want 1.6 and not 1.45 or 1.7. */
 @Composable
