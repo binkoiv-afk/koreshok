@@ -138,8 +138,8 @@ internal fun ScrollReader(
         val height = viewportPx.value.toFloat()
         val step = height * 0.85f
         when {
-            yInViewport < height / 3 -> scope.launch { listState.animateScrollBy(-step) }
-            yInViewport > height * 2 / 3 -> scope.launch { listState.animateScrollBy(step) }
+            yInViewport < height * TURN_ZONE -> scope.launch { listState.animateScrollBy(-step) }
+            yInViewport > height * (1 - TURN_ZONE) -> scope.launch { listState.animateScrollBy(step) }
             else -> onCenterTap()
         }
     }

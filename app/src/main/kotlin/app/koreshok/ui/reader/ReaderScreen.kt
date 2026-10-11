@@ -694,11 +694,12 @@ private fun ChapterPager(
                         },
                         onTap = { offset ->
                             val existing = hitAt(offset)?.let { (_, at) -> highlightAt(at.first, at.second) }
-                            val third = size.width / 3f
+                            // The menu gets the wide middle half; only the edges turn pages.
+                            val edge = size.width * TURN_ZONE
                             when {
                                 existing != null -> onHighlight(existing.toDraft())
-                                offset.x < third -> scope.launch { turnTo(pagerState.currentPage - 1) }
-                                offset.x > third * 2 -> scope.launch { turnTo(pagerState.currentPage + 1) }
+                                offset.x < edge -> scope.launch { turnTo(pagerState.currentPage - 1) }
+                                offset.x > size.width - edge -> scope.launch { turnTo(pagerState.currentPage + 1) }
                                 else -> onCenterTap()
                             }
                         },
@@ -1221,3 +1222,6 @@ private fun Modifier.paperTurn(state: androidx.compose.foundation.pager.PagerSta
 
 private fun pageOffset(state: androidx.compose.foundation.pager.PagerState, index: Int): Float =
     (state.currentPage - index) + state.currentPageOffsetFraction
+
+/** Share of the width at each side where a tap turns the page; the rest opens the menu. */
+internal const val TURN_ZONE = 0.25f
