@@ -106,7 +106,7 @@ class LibraryViewModel(
         found.getOrNull()?.let { _update.value = UpdateState.Available(it) }
         if (manual) {
             _checkMessage.value = when {
-                found.isFailure -> "Не удалось проверить: нет связи с GitHub"
+                found.isFailure -> "Не удалось проверить: ${found.exceptionOrNull()?.message ?: "нет связи с GitHub"}"
                 found.getOrNull() == null -> "У вас последняя версия"
                 else -> "Есть новая версия"
             }

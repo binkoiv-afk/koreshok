@@ -8,6 +8,7 @@ import android.provider.Settings
 import androidx.core.content.FileProvider
 import app.koreshok.BuildConfig
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
@@ -32,12 +33,30 @@ object Updates {
     /**
      * The latest release when it is newer than this app, otherwise null. Throws when neither
      * GitHub's API nor its release page answers, so "no connection" is never shown as "up to date".
+     * The message says why, in words, so a blocked or flaky network can be told apart.
      */
     suspend fun check(): AppUpdate? = withContext(Dispatchers.IO) {
-        val build = runCatching { latestFromApi() }.getOrNull()
-            ?: latestFromPage()
-            ?: throw IOException("GitHub не ответил")
-        if (build.first <= currentBuild) null else AppUpdate(build.first, build.second, build.third)
+        var failure: Throwable? = null
+        var build: Triple<Int, String, String>? = null
+        for (attempt in 0 until 2) {
+            if (attempt > 0) delay(2_000)
+            for (source in listOf(::latestFromApi, ::latestFromPage)) {
+                build = runCatching { source() }.onFailure { failure = it }.getOrNull()
+                if (build != null) break
+            }
+            if (build != null) break
+        }
+        val latest = build ?: throw IOException(reason(failure))
+        if (latest.first <= currentBuild) null else AppUpdate(latest.first, latest.second, latest.third)
+    }
+
+    private fun reason(e: Throwable?): String = when (e) {
+        is java.net.UnknownHostException -> "телефон не находит github.com: нет интернета или сайт заблокирован"
+        is java.net.SocketTimeoutException -> "github.com не ответил вовремя"
+        is javax.net.ssl.SSLException -> "не удалось защищённое соединение с GitHub"
+        is java.net.ConnectException -> "github.com не принимает соединение"
+        null -> "GitHub ответил, но без номера сборки"
+        else -> e.message ?: e.javaClass.simpleName
     }
 
     /** Build number, APK link and notes from the API; null when it refuses (it limits requests per network). */
@@ -48,7 +67,7 @@ object Updates {
             readTimeout = 10_000
         }
         try {
-            if (connection.responseCode != 200) return null
+            if (connection.responseCode != 200) throw IOException("GitHub ответил кодом ${connection.responseCode}")
             val json = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
             val build = json.optString("tag_name").removePrefix("build-").toIntOrNull() ?: return null
             val assets = json.optJSONArray("assets") ?: return null
@@ -70,7 +89,8 @@ object Updates {
             readTimeout = 10_000
         }
         try {
-            val location = connection.getHeaderField("Location") ?: return null
+            val code = connection.responseCode
+            val location = connection.getHeaderField("Location") ?: throw IOException("GitHub ответил кодом $code")
             val tag = location.substringAfterLast("/tag/", "").takeIf { it.startsWith("build-") } ?: return null
             val build = tag.removePrefix("build-").toIntOrNull() ?: return null
             return Triple(build, "$DOWNLOAD/$tag/koreshok.apk", "")
