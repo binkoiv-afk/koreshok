@@ -942,7 +942,7 @@ internal fun ReaderMenu(
 private fun RowScope.MenuAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
     // Five labels share the width; a large system font must not break "Оформление" over lines.
     val density = LocalDensity.current
-    CompositionLocalProvider(LocalDensity provides Density(density.density, density.fontScale.coerceAtMost(1.1f))) {
+    CompositionLocalProvider(LocalDensity provides Density(density.density, density.fontScale.coerceAtMost(1f))) {
         Column(
             Modifier
                 .weight(1f)
