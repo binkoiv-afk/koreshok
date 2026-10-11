@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -835,7 +836,7 @@ private fun ImmersiveMode(hideBars: Boolean) {
 }
 
 @Composable
-private fun ReaderMenu(
+internal fun ReaderMenu(
     document: Document,
     position: Position,
     theme: ReaderTheme,
@@ -873,10 +874,12 @@ private fun ReaderMenu(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                IconButton(onClick = onAutoScroll) { Icon(Icons.Default.SlowMotionVideo, "Автолистание") }
-                IconButton(onClick = onSearch) { Icon(Icons.Default.Search, "Поиск по книге") }
-                IconButton(onClick = onAnnotations) { Icon(Icons.Default.Bookmarks, "Закладки и цитаты") }
-                IconButton(onClick = onSettings) { Icon(Icons.Default.FormatSize, "Оформление") }
+                // Everything else lives in the labelled row below; only what has no place there is up here.
+                TextButton(onClick = onAutoScroll) {
+                    Icon(Icons.Default.SlowMotionVideo, null, Modifier.size(18.dp), tint = theme.text)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Автолистание", color = theme.text, maxLines = 1)
+                }
             }
         }
         Surface(
@@ -923,7 +926,7 @@ private fun ReaderMenu(
                     modifier = Modifier.padding(horizontal = 12.dp),
                 )
                 // Labelled, not just icons up top: this is where people look for fonts and themes.
-                Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                Row(Modifier.fillMaxWidth().padding(top = 6.dp)) {
                     MenuAction(Icons.AutoMirrored.Filled.List, "Оглавление", onToc)
                     MenuAction(Icons.Default.Search, "Поиск", onSearch)
                     MenuAction(Icons.Default.Headphones, "Слушать", onListen)
@@ -936,17 +939,22 @@ private fun ReaderMenu(
 }
 
 @Composable
-private fun MenuAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
-    Column(
-        Modifier
-            .clip(MaterialTheme.shapes.medium)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Icon(icon, null)
-        Spacer(Modifier.height(2.dp))
-        Text(label, style = MaterialTheme.typography.labelMedium)
+private fun RowScope.MenuAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+    // Five labels share the width; a large system font must not break "Оформление" over lines.
+    val density = LocalDensity.current
+    CompositionLocalProvider(LocalDensity provides Density(density.density, density.fontScale.coerceAtMost(1.1f))) {
+        Column(
+            Modifier
+                .weight(1f)
+                .clip(MaterialTheme.shapes.medium)
+                .clickable(onClick = onClick)
+                .padding(vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(icon, null)
+            Spacer(Modifier.height(2.dp))
+            Text(label, fontSize = 11.sp, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
+        }
     }
 }
 
@@ -1184,23 +1192,30 @@ private fun Modifier.paperTurn(state: androidx.compose.foundation.pager.PagerSta
         .zIndex(if (pageOffset(state, index) > 0f) 1f else 0f)
         .graphicsLayer {
             val offset = pageOffset(state, index)
-            // Cancel the pager's slide: pages turn, they do not move sideways.
-            translationX = offset * size.width
-            if (offset > 0f) {
-                transformOrigin = TransformOrigin(0f, 0.5f)
-                cameraDistance = 14f * density
-                rotationY = -100f * offset.coerceAtMost(1f)
+            when {
+                // Pages not taking part in the turn are not drawn: the pager keeps neighbours
+                // composed, and moved into place they would cover the page being read.
+                offset <= -1f || offset >= 1f -> alpha = 0f
+                offset > 0f -> {
+                    // The page being turned stays at the spine and folds away.
+                    translationX = offset * size.width
+                    transformOrigin = TransformOrigin(0f, 0.5f)
+                    cameraDistance = 16f * density
+                    rotationY = -90f * offset
+                    alpha = 1f
+                }
+                else -> {
+                    // The next page lies still underneath.
+                    translationX = offset * size.width
+                    alpha = 1f
+                }
             }
         }
         .drawWithContent {
             drawContent()
             val offset = pageOffset(state, index)
-            if (offset > 0f) {
-                // The folding page catches less light as it turns.
-                drawRect(Color.Black.copy(alpha = 0.25f * offset.coerceAtMost(1f)))
-            } else if (offset < 0f) {
-                drawRect(Color.Black.copy(alpha = 0.18f * (-offset).coerceIn(0f, 1f)))
-            }
+            // A light shade on the turning page only, as it tilts away from the light.
+            if (offset > 0f && offset < 1f) drawRect(Color.Black.copy(alpha = 0.12f * offset))
         }
         .background(theme.background)
 

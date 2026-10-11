@@ -164,6 +164,29 @@ class ScreensTest {
         }
     }
 
+    @Test fun readerMenu() = snap("reader_menu") {
+        // A large system font: labels must stay on one line and nothing may repeat.
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, 1.3f),
+        ) {
+            val document = Document(
+                title = "Мастер и Маргарита",
+                chapters = listOf(Chapter("Глава 1. Никогда не разговаривайте с неизвестными", listOf(TextBlock(BlockKind.PARAGRAPH, "В час жаркого весеннего заката.")))),
+                toc = emptyList(),
+                anchors = emptyMap(),
+                images = emptyMap(),
+            )
+            Box(Modifier.fillMaxSize().background(ReaderTheme.DAY.background)) {
+                app.koreshok.ui.reader.ReaderMenu(
+                    document = document, position = Position(0, 0), theme = ReaderTheme.DAY, canGoBack = false,
+                    onBack = {}, onToc = {}, onSearch = {}, onAutoScroll = {}, onListen = {}, onAnnotations = {}, onSettings = {},
+                    charsPerMinute = 1000, onSeek = {}, onPreviousChapter = {}, onNextChapter = {}, onReturn = {}, onDismiss = {},
+                )
+            }
+        }
+    }
+
     @Test fun readAloud() = snap("reader_read_aloud") {
         val prefs = ReaderPrefs(scroll = true, speechRate = 1.25f)
         Box(Modifier.fillMaxSize()) {
