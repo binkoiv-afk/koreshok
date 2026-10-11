@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -25,23 +26,54 @@ object Updates {
 
     val currentBuild: Int get() = BuildConfig.VERSION_CODE
 
-    /** The latest release when it is newer than this app, otherwise null. */
+    private const val LATEST_PAGE = "https://github.com/binkoiv-afk/koreshok/releases/latest"
+    private const val DOWNLOAD = "https://github.com/binkoiv-afk/koreshok/releases/download"
+
+    /**
+     * The latest release when it is newer than this app, otherwise null. Throws when neither
+     * GitHub's API nor its release page answers, so "no connection" is never shown as "up to date".
+     */
     suspend fun check(): AppUpdate? = withContext(Dispatchers.IO) {
+        val build = runCatching { latestFromApi() }.getOrNull()
+            ?: latestFromPage()
+            ?: throw IOException("GitHub не ответил")
+        if (build.first <= currentBuild) null else AppUpdate(build.first, build.second, build.third)
+    }
+
+    /** Build number, APK link and notes from the API; null when it refuses (it limits requests per network). */
+    private fun latestFromApi(): Triple<Int, String, String>? {
         val connection = (URL(LATEST).openConnection() as HttpURLConnection).apply {
             setRequestProperty("Accept", "application/vnd.github+json")
             connectTimeout = 10_000
             readTimeout = 10_000
         }
         try {
-            if (connection.responseCode != 200) return@withContext null
+            if (connection.responseCode != 200) return null
             val json = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
-            val build = json.optString("tag_name").removePrefix("build-").toIntOrNull() ?: return@withContext null
-            if (build <= currentBuild) return@withContext null
-            val assets = json.optJSONArray("assets") ?: return@withContext null
+            val build = json.optString("tag_name").removePrefix("build-").toIntOrNull() ?: return null
+            val assets = json.optJSONArray("assets") ?: return null
             val apk = (0 until assets.length()).map { assets.getJSONObject(it) }
                 .firstOrNull { it.optString("name").endsWith(".apk") }
-                ?: return@withContext null
-            AppUpdate(build, apk.getString("browser_download_url"), json.optString("body"))
+                ?: return null
+            return Triple(build, apk.getString("browser_download_url"), json.optString("body"))
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    /** The release page redirects to ".../tag/build-N", which is all that is needed. */
+    private fun latestFromPage(): Triple<Int, String, String>? {
+        val connection = (URL(LATEST_PAGE).openConnection() as HttpURLConnection).apply {
+            instanceFollowRedirects = false
+            requestMethod = "HEAD"
+            connectTimeout = 10_000
+            readTimeout = 10_000
+        }
+        try {
+            val location = connection.getHeaderField("Location") ?: return null
+            val tag = location.substringAfterLast("/tag/", "").takeIf { it.startsWith("build-") } ?: return null
+            val build = tag.removePrefix("build-").toIntOrNull() ?: return null
+            return Triple(build, "$DOWNLOAD/$tag/koreshok.apk", "")
         } finally {
             connection.disconnect()
         }
